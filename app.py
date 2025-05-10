@@ -10,6 +10,8 @@ from google import genai
 from google.genai import types
 from dotenv import load_dotenv
 from summerize import generate_summary  # Import from summerize.py (note the spelling)
+from Qgen import generate_quiz, save_quiz_to_file  # Import quiz generation functions
+from chat_interface import create_chatbot_ui  # Import chatbot UI
 
 # Load environment variables from .env file
 load_dotenv()
@@ -20,6 +22,168 @@ st.set_page_config(
     page_icon="📚",
     layout="centered"
 )
+
+# Add custom CSS for the entire application
+st.markdown("""
+<style>
+/* Main app styling */
+.main {
+    background-color: #121212;
+    color: #f0f0f0;
+}
+
+/* Header styling */
+h1, h2, h3 {
+    color: #4da6ff;
+    font-weight: 600;
+}
+
+/* Tab styling */
+.stTabs [data-baseweb="tab-list"] {
+    gap: 10px;
+}
+
+.stTabs [data-baseweb="tab"] {
+    height: 50px;
+    white-space: pre-wrap;
+    border-radius: 8px 8px 0px 0px;
+    padding: 10px 16px;
+    background-color: #333;
+    border: none;
+    color: #f0f0f0;
+    font-weight: 600;
+}
+
+.stTabs [aria-selected="true"] {
+    background-color: #1e88e5 !important;
+    color: white !important;
+}
+
+/* Card styling */
+.card {
+    background-color: #1e1e1e;
+    border-radius: 10px;
+    padding: 20px;
+    margin: 10px 0;
+    border-left: 4px solid #4da6ff;
+}
+
+/* Button styling */
+.stButton>button {
+    border-radius: 6px;
+    padding: 4px 20px;
+    background-color: #1e88e5;
+    color: white;
+    border: none;
+    font-weight: 600;
+}
+
+.stButton>button:hover {
+    background-color: #0d47a1;
+    color: white;
+}
+
+/* Form styling */
+.stForm {
+    background-color: #1e1e1e;
+    padding: 20px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+}
+
+/* Input fields */
+div[data-baseweb="input"] {
+    border-radius: 6px;
+}
+
+div[data-baseweb="select"] {
+    border-radius: 6px;
+}
+
+div[data-baseweb="base-input"] {
+    background-color: #333;
+}
+
+/* Alert/info box styling */
+.stAlert {
+    background-color: #1a237e;
+    border-radius: 8px;
+}
+
+/* File uploader styling */
+.uploadedFile {
+    background-color: #333;
+    border-radius: 6px;
+    padding: 10px;
+}
+
+/* Expander styling */
+.streamlit-expanderHeader {
+    background-color: #333;
+    border-radius: 6px;
+}
+
+/* Success/error/warning indicators */
+.success {
+    background-color: #004d40;
+    padding: 10px;
+    border-radius: 8px;
+    margin: 10px 0;
+}
+
+.error {
+    background-color: #b71c1c;
+    padding: 10px;
+    border-radius: 8px;
+    margin: 10px 0;
+}
+
+.warning {
+    background-color: #e65100;
+    padding: 10px;
+    border-radius: 8px;
+    margin: 10px 0;
+}
+
+/* Code display */
+.stCodeBlock {
+    border-radius: 8px;
+    background-color: #2c2c2c;
+}
+
+/* Slider styling */
+.stSlider {
+    margin-bottom: 20px;
+}
+
+/* Table styling */
+.dataframe {
+    background-color: #2c2c2c;
+    border-radius: 8px;
+}
+
+.dataframe th {
+    background-color: #1e88e5;
+    color: white;
+    text-align: center;
+}
+
+/* Selectbox styling */
+div[data-baseweb="select"] > div {
+    background-color: #333;
+    color: white;
+}
+
+/* Footer section */
+.footer {
+    text-align: center;
+    margin-top: 50px;
+    padding: 20px;
+    border-top: 1px solid #333;
+    color: #999;
+}
+</style>
+""", unsafe_allow_html=True)
 
 # Initialize database connection
 db = Database("edumate.db")
@@ -425,12 +589,53 @@ st.title("Edumate")
 st.markdown("Your intelligent education platform for document management, quizzes, and interactive learning")
 
 # Main tabs
-tab1, tab2, tab3, tab4 = st.tabs([
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "User Management 👤", 
     "Documents 📄", 
     "Quizzes 📊", 
-    "Question Papers 📋"
+    "Question Papers 📋",
+    "Chatbot 💬"
 ])
+
+# Helper function to pretty format JSON for display
+def format_json_for_display(data):
+    """Format JSON data for better display in Streamlit"""
+    if isinstance(data, dict):
+        # If it's a dictionary, create a formatted display
+        formatted_output = ""
+        for key, value in data.items():
+            # Skip technical keys or empty values
+            if key.startswith("_") or value is None or value == "":
+                continue
+                
+            # Format the key as a header
+            formatted_output += f"### {key.replace('_', ' ').title()}\n"
+            
+            # Format the value based on its type
+            if isinstance(value, list):
+                # If it's a list, display as bullet points
+                for item in value:
+                    if isinstance(item, dict):
+                        # If list item is a dict, format it nicely
+                        for sub_key, sub_value in item.items():
+                            formatted_output += f"- **{sub_key}**: {sub_value}\n"
+                    else:
+                        formatted_output += f"- {item}\n"
+            elif isinstance(value, dict):
+                # If it's a nested dict, format recursively
+                for sub_key, sub_value in value.items():
+                    formatted_output += f"**{sub_key}**: {sub_value}\n"
+            else:
+                # For simple values, just display them
+                formatted_output += f"{value}\n\n"
+                
+        return formatted_output
+    elif isinstance(data, list):
+        # If it's a list, convert to markdown bullet points
+        return "\n".join([f"- {item}" for item in data])
+    else:
+        # For simple types, just convert to string
+        return str(data)
 
 # ---- USER MANAGEMENT TAB ----
 with tab1:
@@ -605,6 +810,10 @@ with tab2:
                                         text_content = ocr_result.get("text", "No text extracted")
                                         st.text_area("Content", text_content, height=300)
                                         
+                                        # Add raw JSON view for developers
+                                        with st.expander("View Raw JSON"):
+                                            st.json(ocr_result)
+                                    
                                     with tabs[3]:
                                         st.subheader("Generate Summary")
                                         st.info("Click the button below to generate a summary for this document.")
@@ -660,10 +869,76 @@ with tab2:
                 # Check if document already has a summary
                 existing_summary = db.get_summary(selected_doc_id)
                 
+                # Get document details for potential JSON formatting
+                document = db.cursor.execute('''
+                    SELECT document_id, text_content, original_file_url 
+                    FROM documents
+                    WHERE document_id = ?
+                ''', (selected_doc_id,)).fetchone()
+                
+                # Display document info in a nice card
+                if document:
+                    st.markdown("""
+                    <style>
+                    .document-card {
+                        background-color: #1e3d59;
+                        border-radius: 10px;
+                        padding: 15px;
+                        margin: 10px 0 20px 0;
+                    }
+                    .summary-card {
+                        background-color: #046582;
+                        border-radius: 10px;
+                        padding: 20px;
+                        margin-top: 20px;
+                    }
+                    .summary-section {
+                        margin-top: 15px;
+                        padding: 10px;
+                        background-color: rgba(255, 255, 255, 0.1);
+                        border-radius: 5px;
+                    }
+                    </style>
+                    """, unsafe_allow_html=True)
+                    
+                    # Format file path for display
+                    file_path = document[2]
+                    file_name = os.path.basename(file_path)
+                    
+                    st.markdown(f"""
+                    <div class="document-card">
+                        <h3>Document Details</h3>
+                        <p><strong>File:</strong> {file_name}</p>
+                        <p><strong>ID:</strong> {document[0]}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
                 if existing_summary:
                     st.success("This document already has a summary!")
-                    st.subheader("Existing Summary")
+                    
+                    # Display summary with better formatting
+                    st.markdown("""
+                    <div class="summary-card">
+                        <h3>Document Summary</h3>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    # Display the summary with proper markdown
                     st.markdown(existing_summary[2])
+                    
+                    # Add a view raw JSON option for OCR data
+                    try:
+                        if document and document[1]:
+                            text_content = document[1]
+                            if text_content.strip().startswith('{') and text_content.strip().endswith('}'):
+                                with st.expander("View Source Data (JSON)"):
+                                    try:
+                                        ocr_data = json.loads(text_content)
+                                        st.json(ocr_data)
+                                    except:
+                                        st.text(text_content[:1000] + "..." if len(text_content) > 1000 else text_content)
+                    except Exception as e:
+                        st.error(f"Error displaying source data: {e}")
                     
                     if st.button("Regenerate Summary"):
                         with st.spinner("Regenerating summary..."):
@@ -690,7 +965,11 @@ with tab2:
                                 # Get the summary from the database
                                 summary = db.get_summary(selected_doc_id)
                                 if summary:
-                                    st.markdown("## Generated Summary")
+                                    st.markdown("""
+                                    <div class="summary-card">
+                                        <h3>Generated Summary</h3>
+                                    </div>
+                                    """, unsafe_allow_html=True)
                                     st.markdown(summary[2])
                                 else:
                                     st.error("Summary was created but could not be retrieved.")
@@ -708,6 +987,11 @@ with tab2:
                 if summaries and len(summaries) > 0:
                     for i, summary in enumerate(summaries):
                         with st.expander(f"Summary #{summary[0]} - Document: {os.path.basename(summary[2])}", expanded=False):
+                            # Add a styled container for each summary
+                            st.markdown("""
+                            <div style="background-color: #046582; padding: 10px; border-radius: 10px;">
+                            </div>
+                            """, unsafe_allow_html=True)
                             st.markdown(summary[3])
                             st.caption(f"Generated: {summary[4]}")
                 else:
@@ -717,50 +1001,332 @@ with tab2:
 
 # ---- QUIZZES TAB ----
 with tab3:
-    st.header("Quiz Management")
+    st.header("Quiz Generation and Taking")
     
-    # Create quiz form
-    with st.expander("Create Quiz", expanded=True):
-        with st.form("quiz_form"):
-            document_id = st.number_input("Document ID", min_value=1, step=1)
-            create_quiz_btn = st.form_submit_button("Create Quiz")
-            
-            if create_quiz_btn:
-                try:
-                    quiz_id = db.create_quiz(document_id)
-                    st.success(f"Quiz created successfully! Quiz ID: {quiz_id}")
-                except Exception as e:
-                    st.error(f"Error creating quiz: {str(e)}")
+    # Add styling for the quiz tab
+    st.markdown("""
+    <style>
+    .quiz-container {
+        background-color: #002147;
+        border-radius: 10px;
+        padding: 20px;
+        margin: 15px 0;
+        border-left: 5px solid #4da6ff;
+    }
+    .quiz-title {
+        color: #4da6ff;
+        font-size: 20px;
+        font-weight: bold;
+        margin-bottom: 10px;
+    }
+    .quiz-question {
+        background-color: #0a2b5e;
+        border-radius: 10px;
+        padding: 15px;
+        margin: 10px 0;
+        border-left: 3px solid #3caea3;
+    }
+    .quiz-option {
+        padding: 8px 12px;
+        margin: 5px 0;
+        border-radius: 5px;
+        background-color: #1e3d59;
+    }
+    .quiz-option:hover {
+        background-color: #2c5282;
+    }
+    .quiz-option.selected {
+        background-color: #2c5282;
+        border-left: 3px solid #ffc107;
+    }
+    .quiz-option.correct {
+        background-color: #004d40;
+        border-left: 3px solid #00e676;
+    }
+    .quiz-option.incorrect {
+        background-color: #b71c1c;
+        border-left: 3px solid #ff1744;
+    }
+    .quiz-results {
+        background-color: #0a2b5e;
+        border-radius: 10px;
+        padding: 20px;
+        margin: 15px 0;
+        text-align: center;
+    }
+    .quiz-score {
+        font-size: 24px;
+        font-weight: bold;
+        color: #4da6ff;
+    }
+    </style>
+    """, unsafe_allow_html=True)
     
-    # Add quiz question form
-    with st.expander("Add Quiz Question", expanded=False):
-        with st.form("question_form"):
-            quiz_id = st.number_input("Quiz ID", min_value=1, step=1, key="quiz_question")
-            question_text = st.text_area("Question Text")
-            correct_option = st.text_input("Correct Option")
+    # Create tabs for quiz generation and taking
+    quiz_tab1, quiz_tab2 = st.tabs(["Create Quiz", "Take Quiz"])
+    
+    # Quiz generation tab
+    with quiz_tab1:
+        st.subheader("Generate Quiz from Document")
+        
+        try:
+            # Get documents with text content
+            documents = db.cursor.execute('''
+                SELECT d.document_id, d.original_file_url, u.name, d.text_content 
+                FROM documents d
+                JOIN users u ON d.user_id = u.user_id
+                WHERE d.text_content IS NOT NULL
+                ORDER BY d.processed_at DESC
+            ''').fetchall()
             
-            options_text = st.text_area("Options (one per line)")
-            
-            add_question_btn = st.form_submit_button("Add Question")
-            
-            if add_question_btn:
-                if question_text and correct_option and options_text:
-                    options = [opt.strip() for opt in options_text.split('\n') if opt.strip()]
+            if documents and len(documents) > 0:
+                # Format document options nicely
+                doc_options = {f"{doc[0]}: {os.path.basename(doc[1])} (by {doc[2]})": doc for doc in documents}
+                
+                st.markdown('<div class="quiz-container">', unsafe_allow_html=True)
+                selected_doc = st.selectbox(
+                    "Select Document", 
+                    options=list(doc_options.keys()),
+                    help="Select a document to generate quiz questions from"
+                )
+                
+                document = doc_options[selected_doc]
+                document_id = document[0]
+                text_content = document[3]
+                
+                if text_content:
+                    # Number of questions
+                    num_questions = st.slider("Number of Questions", min_value=3, max_value=20, value=5, step=1)
                     
-                    if correct_option not in options:
-                        options.append(correct_option)
-                    
+                    # Extract topic information
+                    topics = ""
                     try:
-                        question_id = db.add_quiz_question(quiz_id, question_text, correct_option, options)
-                        st.success(f"Question added successfully! Question ID: {question_id}")
-                    except Exception as e:
-                        st.error(f"Error adding question: {str(e)}")
+                        if text_content.strip().startswith('{') and text_content.strip().endswith('}'):
+                            ocr_data = json.loads(text_content)
+                            if 'subject' in ocr_data:
+                                topics = ocr_data['subject']
+                            if 'topics' in ocr_data:
+                                if isinstance(ocr_data['topics'], list):
+                                    topics = ", ".join(ocr_data['topics'])
+                                else:
+                                    topics = ocr_data['topics']
+                                if 'subject' in ocr_data:
+                                    topics = f"{ocr_data['subject']}: {topics}"
+                    except:
+                        pass
+                    
+                    topic_input = st.text_input("Topic/Subject", value=topics, key="topic_input")
+                    st.markdown('</div>', unsafe_allow_html=True)
+                
+                    # Generate Quiz button
+                    if st.button("Generate Quiz", type="primary"):
+                        with st.spinner("Generating quiz questions..."):
+                            # Prepare text content
+                            try:
+                                if text_content.strip().startswith('{') and text_content.strip().endswith('}'):
+                                    ocr_data = json.loads(text_content)
+                                    if 'text' in ocr_data:
+                                        text_content = ocr_data.get('text', '')
+                            except:
+                                pass
+                            
+                            # Generate quiz using Qgen.py
+                            quiz_data = generate_quiz(text_content, topic_input, num_questions)
+                            
+                            if quiz_data:
+                                # Save quiz to file
+                                save_quiz_to_file(quiz_data)
+                                st.success(f"Generated {len(quiz_data)} quiz questions!")
+                                
+                                # Format and display the generated quiz JSON
+                                st.markdown('<div class="quiz-container">', unsafe_allow_html=True)
+                                st.markdown('<div class="quiz-title">Generated Quiz</div>', unsafe_allow_html=True)
+                                
+                                # Display the JSON in a better format
+                                with st.expander("View Raw JSON", expanded=False):
+                                    st.json(quiz_data)
+                                
+                                # Preview the quiz questions
+                                for i, question in enumerate(quiz_data):
+                                    st.markdown(f'<div class="quiz-question">', unsafe_allow_html=True)
+                                    st.markdown(f"**Q{i+1}.** {question['question']}")
+                                    
+                                    # Display options
+                                    for j, option in enumerate(question['options']):
+                                        letter = chr(65 + j)  # A, B, C, D...
+                                        is_correct = option == question['answer']
+                                        
+                                        # Mark correct answers in the preview
+                                        if is_correct:
+                                            st.markdown(f"**{letter}. {option}** ✓")
+                                        else:
+                                            st.markdown(f"{letter}. {option}")
+                                    st.markdown('</div>', unsafe_allow_html=True)
+                                st.markdown('</div>', unsafe_allow_html=True)
+                                
+                                # Direct to take quiz tab
+                                st.session_state.show_quiz = True
+                                st.info("Quiz generated! Go to 'Take Quiz' tab to start the quiz.")
+                            else:
+                                st.error("Failed to generate quiz. Please try again.")
                 else:
-                    st.warning("Please fill all required fields for the question.")
+                    st.warning("Selected document has no text content. Please choose another document.")
+            else:
+                st.warning("No documents found. Please upload a document first.")
+        except Exception as e:
+            st.error(f"Error loading documents: {str(e)}")
+    
+    # Take Quiz tab
+    with quiz_tab2:
+        st.subheader("Take the Quiz")
+        
+        # Load quiz data from file
+        def load_quiz_data(path="quiz.json"):
+            if os.path.exists(path):
+                try:
+                    with open(path, "r") as f:
+                        return json.load(f)
+                except (json.JSONDecodeError, KeyError):
+                    return None
+            return None
+        
+        quiz_data = load_quiz_data()
+        
+        if quiz_data:
+            # Display quiz information
+            if isinstance(quiz_data, list) and len(quiz_data) > 0:
+                st.markdown('<div class="quiz-container">', unsafe_allow_html=True)
+                st.markdown(f'<div class="quiz-title">Quiz with {len(quiz_data)} questions</div>', unsafe_allow_html=True)
+                st.info("Select your answer for each question and click Submit when you're finished.")
+                st.markdown('</div>', unsafe_allow_html=True)
+            
+            # Create a dict to store user responses
+            if "user_responses" not in st.session_state:
+                st.session_state.user_responses = {}
+            
+            # Display questions
+            for i, q in enumerate(quiz_data):
+                st.markdown(f'<div class="quiz-question">', unsafe_allow_html=True)
+                st.markdown(f"**Question {i+1}:** {q['question']}")
+                
+                # Create radio buttons for options
+                option_key = f"quiz_q_{i}"
+                st.session_state.user_responses[i] = st.radio(
+                    "Choose your answer:", 
+                    q["options"],
+                    key=option_key,
+                    label_visibility="collapsed"  # Hide the label since we show the question above
+                )
+                st.markdown('</div>', unsafe_allow_html=True)
+            
+            # Submit button
+            if st.button("Submit Answers", key="submit_quiz", type="primary"):
+                score = 0
+                for i, q in enumerate(quiz_data):
+                    correct = q["answer"]
+                    chosen = st.session_state.user_responses[i]
+                    if correct == chosen:
+                        score += 1
+            
+                # Calculate percentage
+                percentage = int((score / len(quiz_data)) * 100)
+                
+                # Display score with improved formatting
+                st.markdown(f"""
+                <div class="quiz-results">
+                    <div class="quiz-score">Your Score: {score}/{len(quiz_data)} ({percentage}%)</div>
+                """, unsafe_allow_html=True)
+                
+                # Feedback based on score
+                if percentage >= 80:
+                    st.markdown('<p style="color:#00e676; font-size:18px;">🎉 Excellent work! You\'ve mastered this topic!</p>', unsafe_allow_html=True)
+                elif percentage >= 60:
+                    st.markdown('<p style="color:#ffc107; font-size:18px;">👍 Good job! You understand most of the material.</p>', unsafe_allow_html=True)
+                else:
+                    st.markdown('<p style="color:#ff5252; font-size:18px;">📚 Keep studying! You\'ll improve with practice.</p>', unsafe_allow_html=True)
+                
+                st.markdown('</div>', unsafe_allow_html=True)
+            
+                # Show answer review
+                st.markdown('<div class="quiz-container">', unsafe_allow_html=True)
+                st.markdown('<div class="quiz-title">Review Your Answers</div>', unsafe_allow_html=True)
+                
+                for i, q in enumerate(quiz_data):
+                    correct = q["answer"]
+                    chosen = st.session_state.user_responses[i]
+                    is_correct = correct == chosen
+                    
+                    # Create a nicely styled question review
+                    st.markdown(f'<div class="quiz-question">', unsafe_allow_html=True)
+                    st.markdown(f"**Q{i+1}:** {q['question']}")
+                    
+                    # Display each option with appropriate styling
+                    for option in q['options']:
+                        is_user_selected = option == chosen
+                        is_correct_option = option == correct
+                        
+                        if is_user_selected and is_correct_option:
+                            # Correct answer selected
+                            st.markdown(f'<div class="quiz-option correct">✅ {option} (Your answer - Correct!)</div>', unsafe_allow_html=True)
+                        elif is_user_selected and not is_correct_option:
+                            # Wrong answer selected
+                            st.markdown(f'<div class="quiz-option incorrect">❌ {option} (Your answer - Incorrect)</div>', unsafe_allow_html=True)
+                        elif not is_user_selected and is_correct_option:
+                            # Correct answer not selected
+                            st.markdown(f'<div class="quiz-option correct">✓ {option} (Correct answer)</div>', unsafe_allow_html=True)
+                        else:
+                            # Regular option
+                            st.markdown(f'<div class="quiz-option">{option}</div>', unsafe_allow_html=True)
+                    
+                    st.markdown('</div>', unsafe_allow_html=True)
+                st.markdown('</div>', unsafe_allow_html=True)
+        else:
+            if st.session_state.get('show_quiz', False):
+                st.error("⚠️ Quiz generation failed. Please try again.")
+            else:
+                st.info("No quiz has been generated yet. Go to the 'Create Quiz' tab to generate a quiz.")
 
 # ---- QUESTION PAPERS TAB ----
 with tab4:
     st.header("Question Paper Generation")
+    
+    # Apply better styling for the question paper generation section
+    st.markdown("""
+    <style>
+    .topic-card {
+        background-color: #1e3d59;
+        border-radius: 10px;
+        padding: 15px;
+        margin-bottom: 15px;
+    }
+    .qp-options {
+        background-color: #00539c;
+        border-radius: 10px;
+        padding: 15px;
+        margin: 10px 0;
+    }
+    .qp-container {
+        background-color: #002147;
+        border-radius: 10px;
+        padding: 20px;
+        margin: 15px 0;
+        border-left: 5px solid #ffc13b;
+    }
+    .qp-title {
+        color: #ffc13b;
+        font-size: 20px;
+        font-weight: bold;
+        margin-bottom: 10px;
+    }
+    .qp-question {
+        background-color: #0a2b5e;
+        border-radius: 10px;
+        padding: 15px;
+        margin: 10px 0;
+        border-left: 3px solid #3caea3;
+    }
+    </style>
+    """, unsafe_allow_html=True)
     
     # Select document with summary
     try:
@@ -768,6 +1334,7 @@ with tab4:
         if docs_with_summaries and len(docs_with_summaries) > 0:
             doc_options = {f"{doc[0]}: {os.path.basename(doc[1])} (by {doc[2]})": doc[0] for doc in docs_with_summaries}
             
+            st.markdown('<div class="topic-card">', unsafe_allow_html=True)
             selected_doc = st.selectbox(
                 "Select Document with Summary", 
                 options=list(doc_options.keys()),
@@ -785,169 +1352,191 @@ with tab4:
                 with st.expander("View Summary", expanded=False):
                     st.write(summary[2])  # Display the summary text
                 
-                # Question paper generation modes
-                st.subheader("Question Paper Mode")
+                # Get document text from database
+                document = db.cursor.execute('''
+                    SELECT text_content FROM documents WHERE document_id = ?
+                ''', (selected_doc_id,)).fetchone()
                 
-                mode = st.radio(
-                    "Select Generation Mode",
-                    ["Basic Mode", "Advanced Mode", "Exam Mode"],
-                    help="Choose the type of question paper to generate"
-                )
-                
-                # Generation options based on mode
-                with st.form("question_paper_form"):
-                    st.subheader(f"Question Paper Settings - {mode}")
+                if document and document[0]:
+                    text_content = document[0]
                     
-                    if mode == "Basic Mode":
-                        num_questions = st.slider("Number of Questions", min_value=5, max_value=20, value=10, step=1)
-                        num_options = st.slider("Options per Question", min_value=2, max_value=5, value=4, step=1)
-                        difficulty = st.select_slider("Difficulty Level", options=["Easy", "Medium", "Hard"], value="Medium")
-                        
-                        settings = {
-                            "mode": "basic",
-                            "num_questions": num_questions,
-                            "num_options": num_options,
-                            "difficulty": difficulty
-                        }
-                        
-                    elif mode == "Advanced Mode":
-                        num_questions = st.slider("Number of Questions", min_value=3, max_value=15, value=8, step=1)
-                        include_match_type = st.checkbox("Include Match the Following", value=True)
-                        include_true_false = st.checkbox("Include True/False Questions", value=True)
-                        include_descriptive = st.checkbox("Include Descriptive Questions", value=False)
-                        
-                        settings = {
-                            "mode": "advanced",
-                            "num_questions": num_questions,
-                            "include_match_type": include_match_type,
-                            "include_true_false": include_true_false,
-                            "include_descriptive": include_descriptive
-                        }
-                        
-                    else:  # Exam Mode
-                        time_limit = st.slider("Time Limit (minutes)", min_value=30, max_value=180, value=60, step=15)
-                        total_marks = st.slider("Total Marks", min_value=20, max_value=100, value=50, step=5)
-                        mcq_percentage = st.slider("MCQ Percentage", min_value=0, max_value=100, value=60, step=10)
-                        descriptive_percentage = 100 - mcq_percentage
-                        
-                        st.info(f"Distribution: {mcq_percentage}% MCQs, {descriptive_percentage}% Descriptive")
-                        
-                        settings = {
-                            "mode": "exam",
-                            "time_limit": time_limit,
-                            "total_marks": total_marks,
-                            "mcq_percentage": mcq_percentage,
-                            "descriptive_percentage": descriptive_percentage
-                        }
+                    # Try to extract subject/topics from text content
+                    topics = []
+                    try:
+                        if text_content.strip().startswith('{') and text_content.strip().endswith('}'):
+                            ocr_data = json.loads(text_content)
+                            if 'topics' in ocr_data and isinstance(ocr_data['topics'], list):
+                                topics = ocr_data['topics']
+                            elif 'topics' in ocr_data:
+                                # If topics is a string, split by commas
+                                if isinstance(ocr_data['topics'], str):
+                                    topics = [t.strip() for t in ocr_data['topics'].split(',')]
+                    except:
+                        pass
                     
-                    generate_btn = st.form_submit_button("Generate Question Paper")
+                    # Add a default "All Topics" option
+                    if topics:
+                        topics = ["All Topics"] + topics
+                    else:
+                        topics = ["All Topics"]
                     
-                    if generate_btn:
+                    # Topics selection dropdown
+                    selected_topics = st.multiselect(
+                        "Select Topics to Include",
+                        options=topics,
+                        default=["All Topics"],
+                        help="Select specific topics or 'All Topics' to include everything"
+                    )
+                    
+                    # If user has deselected "All Topics" but not selected anything else, guide them
+                    if not selected_topics:
+                        st.warning("Please select at least one topic or 'All Topics'")
+                        selected_topics = ["All Topics"]  # Default back to All Topics
+                    
+                    # Filter content based on selected topics
+                    filtered_text = text_content
+                    if "All Topics" not in selected_topics and topics and len(topics) > 1:
                         try:
-                            # Create the question paper
-                            paper_id = db.create_question_paper(selected_doc_id, settings)
+                            # Try to extract only the sections related to selected topics
+                            # This is a simplified approach - would need more sophistication for actual topic filtering
+                            filtered_sections = []
                             
-                            # Simulate question generation based on the summary
-                            # In a real application, this would use NLP or AI to generate questions
-                            summary_text = summary[2]
-                            sentences = [s.strip() for s in summary_text.split('.') if s.strip()]
+                            # If we have JSON data, try to filter based on topics
+                            if text_content.strip().startswith('{') and text_content.strip().endswith('}'):
+                                ocr_data = json.loads(text_content)
+                                if 'text' in ocr_data:
+                                    # Extract just the text for now - more sophisticated filtering could be added
+                                    filtered_text = ocr_data.get('text', '')
+                        except:
+                            # Fall back to full text if filtering fails
+                            filtered_text = text_content
+                st.markdown('</div>', unsafe_allow_html=True)
+                
+                # Question paper generation modes
+                st.markdown('<div class="qp-options">', unsafe_allow_html=True)
+                st.subheader("Question Paper Settings")
+                
+                # Remove the mode selection radio buttons and keep only number of questions
+                num_questions = st.slider("Number of Questions", min_value=5, max_value=30, value=10, step=1)
+                
+                st.markdown('</div>', unsafe_allow_html=True)
+                
+                # Generate button
+                if st.button("Generate Question Paper", type="primary"):
+                    with st.spinner("Generating question paper..."):
+                        try:
+                            # Topic string for Qgen
+                            topic_string = ", ".join(selected_topics) if "All Topics" not in selected_topics else "All Topics"
                             
-                            # Generate based on selected mode
-                            if mode == "Basic Mode":
-                                # Generate random MCQ questions
-                                for i in range(min(num_questions, len(sentences))):
-                                    if i < len(sentences):
-                                        question = f"What does the following refer to: '{sentences[i]}'?"
-                                        correct = f"Option {random.randint(1, num_options)}"
-                                        options = [f"Option {j}" for j in range(1, num_options+1)]
+                            # Use the Qgen module to generate questions
+                            generated_questions = generate_quiz(filtered_text, topic_string, num_questions)
+                            
+                            if generated_questions and len(generated_questions) > 0:
+                                # Save to file for reference
+                                save_quiz_to_file(generated_questions, "question_paper.json")
+                                
+                                # Display the generated question paper
+                                st.markdown('<div class="qp-container">', unsafe_allow_html=True)
+                                st.markdown(f'<div class="qp-title">Question Paper ({len(generated_questions)} Questions)</div>', unsafe_allow_html=True)
+                                
+                                # Format the questions nicely
+                                for i, question in enumerate(generated_questions):
+                                    st.markdown(f'<div class="qp-question">', unsafe_allow_html=True)
+                                    st.markdown(f"**Q{i+1}.** {question['question']}")
+                                    
+                                    # Display options with letters
+                                    for j, option in enumerate(question['options']):
+                                        letter = chr(65 + j)  # A, B, C, D...
+                                        is_correct = option == question['answer']
                                         
-                                        db.add_paper_question(paper_id, question, correct, options)
-                            
-                            elif mode == "Advanced Mode":
-                                # Generate mixed question types
-                                for i in range(min(num_questions, len(sentences))):
-                                    if i < len(sentences):
-                                        # Mix of different question types
-                                        if i % 3 == 0 and include_match_type:
-                                            question = "Match the following terms with their definitions:"
-                                            correct = "A-1, B-2, C-3, D-4"
-                                            options = ["A-1, B-2, C-3, D-4", "A-2, B-1, C-4, D-3", 
-                                                       "A-4, B-3, C-2, D-1", "A-3, B-4, C-1, D-2"]
-                                        elif i % 3 == 1 and include_true_false:
-                                            question = f"True or False: {sentences[i]}"
-                                            correct = "True" if random.random() > 0.5 else "False"
-                                            options = ["True", "False"]
-                                        elif i % 3 == 2 and include_descriptive:
-                                            question = f"Explain in detail: {sentences[i]}"
-                                            correct = "Descriptive answer - to be evaluated manually"
-                                            options = ["Descriptive answer - to be evaluated manually"]
+                                        # Only mark correct answer in the admin view
+                                        if is_correct:
+                                            st.markdown(f"**{letter}. {option}** ✓")
                                         else:
-                                            question = f"What is the significance of: '{sentences[i]}'?"
-                                            correct = f"Answer option {random.randint(1, 4)}"
-                                            options = [f"Answer option {j}" for j in range(1, 5)]
-                                        
-                                        db.add_paper_question(paper_id, question, correct, options)
-                            
-                            else:  # Exam Mode
-                                # Calculate number of questions based on distribution
-                                mcq_count = int((num_questions * mcq_percentage) / 100)
-                                desc_count = num_questions - mcq_count
+                                            st.markdown(f"{letter}. {option}")
+                                    st.markdown('</div>', unsafe_allow_html=True)
+                                st.markdown('</div>', unsafe_allow_html=True)
                                 
-                                # Generate MCQs
-                                for i in range(min(mcq_count, len(sentences))):
-                                    if i < len(sentences):
-                                        question = f"MCQ ({total_marks//num_questions} marks): {sentences[i]}?"
-                                        correct = f"Answer {random.randint(1, 4)}"
-                                        options = [f"Answer {j}" for j in range(1, 5)]
-                                        
-                                        db.add_paper_question(paper_id, question, correct, options)
+                                # Add download capability
+                                question_paper_json = json.dumps(generated_questions, indent=2)
+                                st.download_button(
+                                    label="Download Question Paper (JSON)",
+                                    data=question_paper_json,
+                                    file_name="question_paper.json",
+                                    mime="application/json"
+                                )
                                 
-                                # Generate descriptive questions
-                                for i in range(min(desc_count, len(sentences) - mcq_count)):
-                                    if i + mcq_count < len(sentences):
-                                        marks = (total_marks // num_questions) * 2  # Descriptive worth more
-                                        question = f"Descriptive ({marks} marks): Elaborate on {sentences[i + mcq_count]}"
-                                        correct = "Descriptive answer - evaluated manually"
-                                        options = ["Descriptive answer - evaluated manually"]
-                                        
-                                        db.add_paper_question(paper_id, question, correct, options)
-                            
-                            st.success(f"Question paper generated successfully! Paper ID: {paper_id}")
-                            
-                            # Show preview button
-                            if st.button("Preview Question Paper"):
-                                # Get paper details and questions
-                                paper = db.get_question_paper(paper_id)
-                                questions = db.get_paper_questions(paper_id)
+                                # Create a printable version
+                                printable = f"## Question Paper\n\n"
+                                for i, question in enumerate(generated_questions):
+                                    printable += f"**Q{i+1}.** {question['question']}\n\n"
+                                    for j, option in enumerate(question['options']):
+                                        letter = chr(65 + j)
+                                        printable += f"{letter}. {option}\n"
+                                    printable += "\n"
                                 
-                                st.subheader(f"Question Paper #{paper_id}")
-                                st.write(f"Based on: {os.path.basename(paper[4])}")
-                                st.write(f"Generated on: {paper[3]}")
-                                
-                                if mode == "Exam Mode":
-                                    st.write(f"Time Limit: {settings['time_limit']} minutes")
-                                    st.write(f"Total Marks: {settings['total_marks']}")
-                                
-                                # Display questions
-                                for i, q in enumerate(questions):
-                                    q_options = db.get_paper_question_options(q[0])
-                                    
-                                    st.markdown(f"**Question {i+1}**: {q[2]}")
-                                    
-                                    for j, opt in enumerate(q_options):
-                                        st.markdown(f"- {opt[2]}")
-                                    
-                                    st.markdown("---")
-                            
+                                st.download_button(
+                                    label="Download Printable Version (Markdown)",
+                                    data=printable,
+                                    file_name="question_paper.md",
+                                    mime="text/markdown"
+                                )
+                            else:
+                                st.error("Failed to generate questions. Please try different settings or another document.")
                         except Exception as e:
                             st.error(f"Error generating question paper: {str(e)}")
             else:
-                st.warning("No summary found for the selected document. Please add a summary first.")
+                st.warning("Selected document has no summary. Please generate a summary first.")
         else:
-            st.warning("No documents with summaries found. Please upload documents and add summaries first.")
+            st.warning("No documents with summaries found. Please upload documents and generate summaries first.")
     except Exception as e:
-        st.error(f"Error loading documents with summaries: {str(e)}")
-        st.info("Make sure you have created documents and added summaries to them.")
+        st.error(f"Error loading documents: {str(e)}")
+    
+    # Manage existing question papers
+    with st.expander("Manage Existing Question Papers", expanded=False):
+        try:
+            # List existing question papers
+            papers = db.cursor.execute('''
+                SELECT p.paper_id, d.document_id, d.original_file_url, p.created_at
+                FROM question_papers p
+                JOIN documents d ON p.document_id = d.document_id
+                ORDER BY p.created_at DESC
+            ''').fetchall()
+            
+            if papers and len(papers) > 0:
+                st.subheader("Existing Question Papers")
+                for paper in papers:
+                    paper_id = paper[0]
+                    document_name = os.path.basename(paper[2]) if paper[2] else f"Document {paper[1]}"
+                    created_at = paper[3]
+                    
+                    st.markdown(f"**Paper ID: {paper_id}** - {document_name} (Created: {created_at})")
+                    
+                    if st.button(f"Delete Paper {paper_id}", key=f"del_paper_{paper_id}"):
+                        db.cursor.execute("DELETE FROM question_papers WHERE paper_id = ?", (paper_id,))
+                        db.conn.commit()
+                        st.success(f"Question paper (ID: {paper_id}) deleted.")
+                        st.rerun()
+            else:
+                st.info("No existing question papers found.")
+        except Exception as e:
+            st.error(f"Error loading question papers: {str(e)}")
+
+# ---- CHATBOT TAB ----
+with tab5:
+    st.header("Learning Assistant")
+    
+    # Create chatbot UI
+    create_chatbot_ui()
+
+# Add a footer with version and credit information
+st.markdown("""
+<div class="footer">
+    <p>Edumate - Intelligent Education Platform v1.2.0</p>
+    <p>© 2023-2024 Edumate Team. All rights reserved.</p>
+    <p>Powered by Gemini, LearnLM, and Streamlit</p>
+</div>
+""", unsafe_allow_html=True)
 
 # Footer
 st.divider()

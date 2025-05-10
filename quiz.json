@@ -1,0 +1,102 @@
+[
+  {
+    "question": "What type of circuit is a Travelling Salesman Problem (TSP) trying to find the shortest path for?",
+    "options": [
+      "Eulerian path",
+      "Simple path",
+      "Hamiltonian circuit",
+      "Directed cycle"
+    ],
+    "answer": "Hamiltonian circuit"
+  },
+  {
+    "question": "In the exhaustive search approach to the Knapsack problem with 'n' items, how many subsets of items are generated?",
+    "options": [
+      "n",
+      "n!",
+      "2^n",
+      "n^2"
+    ],
+    "answer": "2^n"
+  },
+  {
+    "question": "The core idea of the Decrease-and-Conquer technique is based on exploiting the relationship between:",
+    "options": [
+      "Two independent problems",
+      "A problem instance and a solution to its smaller instance",
+      "A problem instance and an unrelated problem",
+      "Iterative loops and recursive calls"
+    ],
+    "answer": "A problem instance and a solution to its smaller instance"
+  },
+  {
+    "question": "Insertion sort is an example of which variation of the Decrease-and-Conquer technique?",
+    "options": [
+      "Decrease by a constant factor",
+      "Variable size decrease",
+      "Decrease by a constant",
+      "Divide and Conquer"
+    ],
+    "answer": "Decrease by a constant"
+  },
+  {
+    "question": "What is the worst-case time complexity of Insertion Sort based on the number of key comparisons?",
+    "options": [
+      "\u0398(n log n)",
+      "\u0398(n)",
+      "\u0398(n^2)",
+      "\u0398(log n)"
+    ],
+    "answer": "\u0398(n^2)"
+  },
+  {
+    "question": "A graph must possess which characteristic to have a topological sort?",
+    "options": [
+      "It must be connected",
+      "It must be undirected",
+      "It must be a directed acyclic graph (DAG)",
+      "It must have a Hamiltonian circuit"
+    ],
+    "answer": "It must be a directed acyclic graph (DAG)"
+  },
+  {
+    "question": "According to the text, which of the following are the two main methods for performing topological sorting?",
+    "options": [
+      "BFS and DFS",
+      "Source removal and Edge addition",
+      "DFS and Source removal",
+      "Inorder and Postorder traversal"
+    ],
+    "answer": "DFS and Source removal"
+  },
+  {
+    "question": "For a Divide and Conquer algorithm that divides a problem of size n into two subproblems of size n/2 and has a non-recursive cost f(n), the typical recurrence relation is:",
+    "options": [
+      "T(n) = T(n-1) + f(n)",
+      "T(n) = 2T(n/2) + f(n)",
+      "T(n) = T(n/2) + f(n)",
+      "T(n) = aT(n/b) + f(n)"
+    ],
+    "answer": "T(n) = 2T(n/2) + f(n)"
+  },
+  {
+    "question": "What is the time complexity of Merge Sort in all cases (worst, best, and average)?",
+    "options": [
+      "O(n^2)",
+      "O(n log n)",
+      "O(log n)",
+      "O(n!)"
+    ],
+    "answer": "O(n log n)"
+  },
+  {
+    "question": "How many multiplications are used by Strassen's algorithm to multiply two 2x2 matrices?",
+    "options": [
+      "4",
+      "7",
+      "8",
+      "18"
+    ],
+    "answer": "7"
+  }
+]

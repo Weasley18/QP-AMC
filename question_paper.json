@@ -1,0 +1,102 @@
+[
+  {
+    "question": "According to the text, how do AI and ML technologies compare to conventional signature-based detection techniques in cybersecurity?",
+    "options": [
+      "They are slower at detecting threats.",
+      "They are only effective against known attack vectors.",
+      "They are capable of identifying patterns and anomalies even in unknown data.",
+      "They rely solely on pre-defined threat signatures."
+    ],
+    "answer": "They are capable of identifying patterns and anomalies even in unknown data."
+  },
+  {
+    "question": "What is identified in the text as one of the strongest uses of AI in cybersecurity detection?",
+    "options": [
+      "AI-Based Encryption",
+      "Automated Threat Intelligence",
+      "Security Automation",
+      "Anomaly Detection"
+    ],
+    "answer": "Anomaly Detection"
+  },
+  {
+    "question": "Anomaly detection using AI is particularly useful for defense against which types of threats, according to the text?",
+    "options": [
+      "Simple virus infections",
+      "Known signature-based attacks",
+      "Insider threats and advanced persistent threats (APTs)",
+      "Common phishing attempts"
+    ],
+    "answer": "Insider threats and advanced persistent threats (APTs)"
+  },
+  {
+    "question": "Behavioral Analysis using AI helps to detect potential threats by monitoring behavior over time to identify what?",
+    "options": [
+      "Pre-defined attack signatures",
+      "Deviations from normal behavior or unusual activity patterns",
+      "Only network traffic volume",
+      "Static security logs"
+    ],
+    "answer": "Deviations from normal behavior or unusual activity patterns"
+  },
+  {
+    "question": "According to the text, what real-time process are AI systems capable of performing automatically from various sources?",
+    "options": [
+      "Deploying encryption keys",
+      "Gathering, analyzing, and correlating threat intelligence",
+      "Training new machine learning models",
+      "Creating new attack signatures"
+    ],
+    "answer": "Gathering, analyzing, and correlating threat intelligence"
+  },
+  {
+    "question": "What is an emerging trend in defense systems using AI mentioned in the text?",
+    "options": [
+      "Manual incident response",
+      "Signature-based malware analysis",
+      "AI-Driven Security Automation",
+      "User behavioral questionnaires"
+    ],
+    "answer": "AI-Driven Security Automation"
+  },
+  {
+    "question": "How does AI primarily enrich endpoint security according to the text?",
+    "options": [
+      "By reducing the number of endpoints",
+      "Through better detection of malware and enhancing EDR systems",
+      "By eliminating the need for user authentication",
+      "By simplifying network configuration"
+    ],
+    "answer": "Through better detection of malware and enhancing EDR systems"
+  },
+  {
+    "question": "According to the text, how is AI used by cybercriminals to develop more adaptive and stealthy malware?",
+    "options": [
+      "By making it simpler to code",
+      "By changing its behavior to evade detection",
+      "By increasing its file size",
+      "By embedding known attack signatures"
+    ],
+    "answer": "By changing its behavior to evade detection"
+  },
+  {
+    "question": "The text states that AI enhances phishing attacks primarily by doing what?",
+    "options": [
+      "Making emails shorter",
+      "Embedding more viruses directly in the email",
+      "Crafting highly targeted emails using personal data",
+      "Reducing the number of recipients"
+    ],
+    "answer": "Crafting highly targeted emails using personal data"
+  },
+  {
+    "question": "What specific term is used in the text for the attack field where AI models are manipulated to provide wrong predictions or classifications?",
+    "options": [
+      "Phishing Attacks",
+      "AI-Powered Malware",
+      "Anomaly Detection Attacks",
+      "Adversarial Machine Learning"
+    ],
+    "answer": "Adversarial Machine Learning"
+  }
+]
