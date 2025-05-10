@@ -1,0 +1,32 @@
+{
+  "summary": "This document discusses advanced algorithms and data structures for efficient problem solving. It covers sorting algorithms such as quicksort, mergesort, and heapsort, along with their time and space complexity analysis. The document also explains various data structures including arrays, linked lists, trees, and graphs, with examples of their practical applications. Finally, it presents case studies on applying these concepts to solve real-world computational problems.",
+  "quiz": {
+    "questions": [
+      {
+        "question_text": "Which sorting algorithm has the best average-case time complexity?",
+        "correct_option": "Quicksort",
+        "options": ["Bubble Sort", "Insertion Sort", "Quicksort", "Selection Sort"]
+      },
+      {
+        "question_text": "What is the time complexity of mergesort?",
+        "correct_option": "O(n log n)",
+        "options": ["O(n)", "O(n log n)", "O(n²)", "O(2ⁿ)"]
+      },
+      {
+        "question_text": "Which data structure provides O(1) access time for elements?",
+        "correct_option": "Array",
+        "options": ["Array", "Linked List", "Binary Search Tree", "Hash Table"]
+      },
+      {
+        "question_text": "Which of the following is NOT a linear data structure?",
+        "correct_option": "Tree",
+        "options": ["Array", "Linked List", "Queue", "Tree"]
+      },
+      {
+        "question_text": "In a binary tree, what is the maximum number of nodes at level i?",
+        "correct_option": "2^i",
+        "options": ["i", "2i", "2^i", "i^2"]
+      }
+    ]
+  }
+} 

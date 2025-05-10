@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>User Creation</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 600px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    h1 {
+      color: #333;
+    }
+    form {
+      background-color: #f5f5f5;
+      padding: 20px;
+      border-radius: 5px;
+      margin-bottom: 20px;
+    }
+    input, select, button {
+      width: 100%;
+      padding: 10px;
+      margin-bottom: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      box-sizing: border-box;
+    }
+    button {
+      background-color: #4CAF50;
+      color: white;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    button:hover {
+      background-color: #45a049;
+    }
+    #output {
+      background-color: #f9f9f9;
+      padding: 15px;
+      border-radius: 5px;
+      border-left: 4px solid #4CAF50;
+      white-space: pre-wrap;
+    }
+    .error {
+      color: red;
+      border-left: 4px solid red;
+    }
+    .success {
+      color: green;
+    }
+    .loading {
+      color: #888;
+    }
+  </style>
+</head>
+<body>
+  <h1>Create User</h1>
+  
+  <div id="serverStatus">
+    <p>API ready to use</p>
+  </div>
+  
+  <form id="userForm">
+    <input type="text" id="name" placeholder="Name" required><br>
+    <input type="email" id="email" placeholder="Email" required><br>
+    <select id="role">
+      <option value="student">Student</option>
+      <option value="teacher">Teacher</option>
+    </select><br>
+    <button type="submit" id="submitBtn">Create</button>
+  </form>
+
+  <h2>Response:</h2>
+  <pre id="output">Response will appear here</pre>
+
+  <script>
+    const form = document.getElementById("userForm");
+    const outputEl = document.getElementById("output");
+    const submitBtn = document.getElementById("submitBtn");
+    
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      
+      outputEl.innerText = "Sending request...";
+      outputEl.className = "loading";
+      submitBtn.disabled = true;
+      
+      const name = document.getElementById("name").value;
+      const email = document.getElementById("email").value;
+      const role = document.getElementById("role").value;
+      
+      const userData = { name, email, role };
+      console.log("Sending data:", userData);
+
+      try {
+        const response = await fetch("/api/users/", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(userData)
+        });
+        
+        console.log("Response status:", response.status);
+        const result = await response.json();
+        console.log("Response data:", result);
+        
+        if (response.ok) {
+          outputEl.className = "success";
+          outputEl.innerText = "✅ Success!\n\n" + JSON.stringify(result, null, 2);
+          form.reset();
+        } else {
+          outputEl.className = "error";
+          outputEl.innerText = "❌ Error: " + JSON.stringify(result, null, 2);
+        }
+      } catch (error) {
+        console.error("Fetch error:", error);
+        outputEl.className = "error";
+        outputEl.innerText = "❌ Network Error: " + error.message;
+      } finally {
+        submitBtn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html> 
