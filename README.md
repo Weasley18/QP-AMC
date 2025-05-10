@@ -19,10 +19,6 @@ pip install -r requirements.txt
 
 2. Create a `.env` file in the project root directory with your API keys:
 
-```
-GEMINI_API_KEY=AIzaSyD0Rxdt-R2nSEGcDsoYvvEUKOOdb5K69H0
-YOUTUBE_API_KEY=AIzaSyCeLTyr8c2WLnSytacI3WSqdMB76azvTso
-```
 
 ## Usage
 
