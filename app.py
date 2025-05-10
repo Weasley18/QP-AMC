@@ -5,6 +5,14 @@ from database import Database
 import os
 import random
 import PyPDF2  # Import PyPDF2 for PDF text extraction
+import base64
+from google import genai
+from google.genai import types
+from dotenv import load_dotenv
+from summerize import generate_summary  # Import from summerize.py (note the spelling)
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Set page config
 st.set_page_config(
@@ -33,6 +41,198 @@ def extract_text_from_pdf(pdf_path):
         return text
     except Exception as e:
         st.error(f"Error extracting text from PDF: {str(e)}")
+        return None
+
+# OCR Function using Google Gemini API
+def ocr_pdf_with_gemini(pdf_file_path: str):
+    """
+    Process a PDF file with Google Gemini OCR and store results in the database.
+    Returns the JSON response from the API.
+    """
+    api_key = os.environ.get("GEMINI_API_KEY")
+    
+    if not api_key:
+        st.error("GEMINI_API_KEY environment variable not set. Please add it to your .env file.")
+        return None
+        
+    client = genai.Client(
+        api_key=api_key,
+    )
+
+    model = "gemini-2.5-flash-preview-04-17"
+
+    # Read the PDF file in binary mode
+    with open(pdf_file_path, "rb") as f:
+        pdf_bytes = f.read()
+
+    # Create a Part from the PDF bytes
+    pdf_part = types.Part.from_bytes(mime_type="application/pdf", data=pdf_bytes)
+
+    contents = [
+        types.Content(
+            role="user",
+            parts=[
+                pdf_part,
+            ],
+        ),
+    ]
+    generate_content_config = types.GenerateContentConfig(
+        response_mime_type="application/json",
+        system_instruction=[
+            types.Part.from_text(text="""You will be given a pdf of notes: Handwritten or Typed.
+        Your task is to convert handwritten notes to clear text.
+        If the pdf is in typed format, just parse the text.
+        The return should be a json file with the fields: subject, topics, text.
+        Structure the JSON output with proper readability for formulas and examples."""),
+        ],
+    )
+
+    try:
+        st.info(f"Processing PDF with {model}. This may take a few minutes...")
+        
+        # Create a placeholder for streaming output
+        output_placeholder = st.empty()
+        full_response = ""
+        
+        # Stream the response
+        for chunk in client.models.generate_content_stream(
+            model=model,
+            contents=contents,
+            config=generate_content_config,
+        ):
+            if chunk.text:
+                full_response += chunk.text
+                # Update the placeholder with the current response
+                output_placeholder.text(full_response)
+        
+        # Try to parse the JSON response
+        try:
+            json_data = json.loads(full_response)
+            return json_data
+        except json.JSONDecodeError:
+            st.error("Failed to parse JSON from the API response.")
+            st.code(full_response[:1000] + ("..." if len(full_response) > 1000 else ""))
+            return None
+            
+    except Exception as e:
+        st.error(f"An error occurred during OCR processing: {str(e)}")
+        return None
+
+# Function to store OCR results in the database
+def store_ocr_result(user_id, pdf_file_path, ocr_data):
+    """
+    Store OCR results in the database.
+    Returns the document ID.
+    """
+    try:
+        # Add document to the database
+        document_id = db.add_document(
+            user_id=user_id, 
+            original_file_url=pdf_file_path, 
+            source_type='text', 
+            text_content=ocr_data.get('text', '')
+        )
+        
+        # Mark document as processed
+        db.cursor.execute('''
+            UPDATE documents 
+            SET processed_at = CURRENT_TIMESTAMP
+            WHERE document_id = ?
+        ''', (document_id,))
+        
+        db.conn.commit()
+        return document_id
+        
+    except Exception as e:
+        st.error(f"Error storing OCR result: {str(e)}")
+        return None
+
+# Function to create a summary using the Gemini API
+def create_summary_for_document(document_id):
+    """
+    Create a summary for a document using the Gemini API.
+    Returns the summary_id if successful, None otherwise.
+    """
+    try:
+        # Get document details from database
+        document = db.cursor.execute('''
+            SELECT document_id, text_content, original_file_url 
+            FROM documents
+            WHERE document_id = ?
+        ''', (document_id,)).fetchone()
+        
+        if not document or not document[1]:  # If no document or no text content
+            st.error("No text content found for this document")
+            return None
+            
+        # Extract subject and topics from OCR data if available
+        ocr_data = {}
+        text_content = document[1]
+        
+        # Try to extract subject and topics from text content
+        # This is assuming the OCR result is stored as JSON in the text_content field
+        try:
+            if text_content.strip().startswith('{') and text_content.strip().endswith('}'):
+                ocr_data = json.loads(text_content)
+                # If text is in JSON format, get the text field
+                if 'text' in ocr_data:
+                    text_content = ocr_data.get('text', '')
+        except:
+            # If not JSON, use the text as is
+            pass
+            
+        # Generate summary using summerize.py
+        summary_result = generate_summary(
+            text_content,
+            subject=ocr_data.get('subject', None),
+            topics=ocr_data.get('topics', None)
+        )
+        
+        if summary_result:
+            # Format summary for storage based on summerize.py output format
+            # The format is expected to be different from summarize.py
+            formatted_summary = ""
+            
+            # Check if we have a topics list or dictionary
+            if isinstance(summary_result, dict):
+                if "topics" in summary_result and isinstance(summary_result["topics"], list):
+                    # Format with topics as a list
+                    formatted_summary += "# Summary\n\n"
+                    if "summary" in summary_result:
+                        formatted_summary += f"{summary_result.get('summary', '')}\n\n"
+                    
+                    formatted_summary += "# Topics\n\n"
+                    for topic in summary_result.get("topics", []):
+                        if isinstance(topic, dict) and "name" in topic and "content" in topic:
+                            formatted_summary += f"## {topic['name']}\n\n{topic['content']}\n\n"
+                        else:
+                            formatted_summary += f"- {topic}\n"
+                else:
+                    # Format for topic-content pairs as top-level keys
+                    formatted_summary += "# Summary\n\n"
+                    
+                    # Extract the main summary if it exists
+                    if "summary" in summary_result:
+                        formatted_summary += f"{summary_result.get('summary', '')}\n\n"
+                    
+                    # Process other keys as potential topics
+                    formatted_summary += "# Topics\n\n"
+                    for key, value in summary_result.items():
+                        if key != "summary" and key != "topics":
+                            formatted_summary += f"## {key}\n\n{value}\n\n"
+            else:
+                # If it's just text, use it directly
+                formatted_summary = str(summary_result)
+            
+            # Add summary to database
+            summary_id = db.add_summary(document_id, formatted_summary)
+            return summary_id
+        else:
+            st.error("Failed to generate summary")
+            return None
+            
+    except Exception as e:
+        st.error(f"Error creating summary: {str(e)}")
         return None
 
 # Advanced function to import data from JSON file
@@ -224,8 +424,13 @@ API_URL = "http://localhost:8000/api"
 st.title("Edumate")
 st.markdown("Your intelligent education platform for document management, quizzes, and interactive learning")
 
-# Create tabs for different functionalities
-tab1, tab2, tab3, tab4, tab5 = st.tabs(["User Management", "Documents", "Quizzes", "Question Papers", "Import Data"])
+# Main tabs
+tab1, tab2, tab3, tab4 = st.tabs([
+    "User Management 👤", 
+    "Documents 📄", 
+    "Quizzes 📊", 
+    "Question Papers 📋"
+])
 
 # ---- USER MANAGEMENT TAB ----
 with tab1:
@@ -283,7 +488,7 @@ with tab1:
 with tab2:
     st.header("Document Management")
     
-    doc_tab1, doc_tab2 = st.tabs(["Upload Document", "Manage Summaries"])
+    doc_tab1, doc_tab2, doc_tab3 = st.tabs(["Upload Document", "OCR Processing", "Manage Summaries"])
     
     # Upload Document Tab
     with doc_tab1:
@@ -326,14 +531,112 @@ with tab2:
                 except Exception as e:
                     st.error(f"Error uploading document: {str(e)}")
     
-    # Document Summaries Tab
+    # OCR Processing Tab
     with doc_tab2:
+        st.subheader("OCR Processing with Google Gemini")
+        st.markdown("""
+        Process PDF documents (including handwritten notes) using Google's Gemini AI.
+        The system will extract text, identify subject and topics, and store in the database.
+        """)
+        
+        # User selection
+        try:
+            users = db.get_all_users()
+            if users and len(users) > 0:
+                user_options = {f"{user[1]} ({user[2]}, {user[3]})": user[0] for user in users}
+                
+                selected_user = st.selectbox(
+                    "Select User", 
+                    options=list(user_options.keys()),
+                    help="Select a user to associate with this document",
+                    key="ocr_user"
+                )
+                
+                selected_user_id = user_options[selected_user]
+                
+                # PDF file upload
+                uploaded_pdf = st.file_uploader("Upload PDF File for OCR", type=["pdf"], key="ocr_pdf")
+                
+                if uploaded_pdf is not None:
+                    # Display basic file info
+                    file_details = {"FileName": uploaded_pdf.name, "FileType": uploaded_pdf.type, "FileSize": f"{uploaded_pdf.size / 1024:.2f} KB"}
+                    st.write(file_details)
+                    
+                    # Save the uploaded file
+                    file_path = os.path.join("uploads", uploaded_pdf.name)
+                    with open(file_path, "wb") as f:
+                        f.write(uploaded_pdf.getbuffer())
+                    
+                    st.success(f"PDF saved at: {file_path}")
+                    
+                    # Process button
+                    if st.button("Process with Gemini OCR"):
+                        # Run OCR processing
+                        with st.spinner("Processing PDF with Gemini AI..."):
+                            ocr_result = ocr_pdf_with_gemini(file_path)
+                            
+                            if ocr_result:
+                                st.success("OCR processing completed!")
+                                
+                                # Store in database
+                                document_id = store_ocr_result(selected_user_id, file_path, ocr_result)
+                                
+                                if document_id:
+                                    st.success(f"OCR results stored in database! Document ID: {document_id}")
+                                    
+                                    # Display results
+                                    tabs = st.tabs(["Subject", "Topics", "Text", "Generate Summary"])
+                                    
+                                    with tabs[0]:
+                                        st.subheader("Subject")
+                                        st.write(ocr_result.get("subject", "No subject identified"))
+                                    
+                                    with tabs[1]:
+                                        st.subheader("Topics")
+                                        topics = ocr_result.get("topics", "No topics identified")
+                                        if isinstance(topics, list):
+                                            for topic in topics:
+                                                st.write(f"• {topic}")
+                                        else:
+                                            st.write(topics)
+                                    
+                                    with tabs[2]:
+                                        st.subheader("Extracted Text")
+                                        text_content = ocr_result.get("text", "No text extracted")
+                                        st.text_area("Content", text_content, height=300)
+                                        
+                                    with tabs[3]:
+                                        st.subheader("Generate Summary")
+                                        st.info("Click the button below to generate a summary for this document.")
+                                        
+                                        if st.button("Summarize Document"):
+                                            with st.spinner("Generating summary..."):
+                                                summary_id = create_summary_for_document(document_id)
+                                                
+                                                if summary_id:
+                                                    st.success(f"Summary generated successfully! Summary ID: {summary_id}")
+                                                    
+                                                    # Get the summary from the database
+                                                    summary = db.get_summary(document_id)
+                                                    if summary:
+                                                        st.markdown("## Summary")
+                                                        st.markdown(summary[2])
+                                                    else:
+                                                        st.error("Summary was created but could not be retrieved.")
+                            else:
+                                st.error("OCR processing failed. Please try again.")
+            else:
+                st.warning("No users found. Please create a user first.")
+        except Exception as e:
+            st.error(f"Error in OCR processing: {str(e)}")
+    
+    # Document Summaries Tab
+    with doc_tab3:
         # Display existing documents that need summaries
-        st.subheader("Add Summary to Document")
+        st.subheader("Document Summaries")
         
         try:
             # Get all documents from database
-            # Note: You need to implement get_all_documents in your Database class
             documents = db.cursor.execute('''
                 SELECT d.document_id, d.original_file_url, u.name, d.source_type, d.uploaded_at,
                     (SELECT COUNT(*) FROM summaries s WHERE s.document_id = d.document_id) as has_summary
@@ -349,7 +652,7 @@ with tab2:
                 selected_doc = st.selectbox(
                     "Select Document", 
                     options=list(doc_options.keys()),
-                    help="Select a document to add or view its summary"
+                    help="Select a document to view or generate its summary"
                 )
                 
                 selected_doc_id = doc_options[selected_doc]
@@ -360,52 +663,37 @@ with tab2:
                 if existing_summary:
                     st.success("This document already has a summary!")
                     st.subheader("Existing Summary")
-                    st.text_area("Summary Text", existing_summary[2], height=200, disabled=True)
+                    st.markdown(existing_summary[2])
                     
-                    if st.button("Update Summary"):
-                        st.session_state.edit_summary = True
-                    
-                    if st.session_state.get('edit_summary', False):
-                        with st.form("update_summary_form"):
-                            new_summary_text = st.text_area("New Summary Text", existing_summary[2], height=200)
-                            update_btn = st.form_submit_button("Save Updated Summary")
+                    if st.button("Regenerate Summary"):
+                        with st.spinner("Regenerating summary..."):
+                            # Delete old summary
+                            db.cursor.execute("DELETE FROM summaries WHERE document_id = ?", (selected_doc_id,))
+                            db.conn.commit()
                             
-                            if update_btn:
-                                try:
-                                    # Delete old summary and add new one
-                                    db.cursor.execute("DELETE FROM summaries WHERE document_id = ?", (selected_doc_id,))
-                                    summary_id = db.add_summary(selected_doc_id, new_summary_text)
-                                    st.success(f"Summary updated successfully! Summary ID: {summary_id}")
-                                    st.session_state.edit_summary = False
-                                    st.rerun()
-                                except Exception as e:
-                                    st.error(f"Error updating summary: {str(e)}")
-                else:
-                    st.info("This document doesn't have a summary yet. Add one below:")
-                    
-                    with st.form("summary_form"):
-                        summary_text = st.text_area("Summary Text", height=200, 
-                                               help="Enter the summary of the document here")
-                        
-                        submit_summary = st.form_submit_button("Save Summary to Database")
-                        
-                        if submit_summary and summary_text:
-                            try:
-                                summary_id = db.add_summary(selected_doc_id, summary_text)
-                                st.success(f"Summary added successfully and saved to database! Summary ID: {summary_id}")
-                                st.info("This summary is now available for question paper generation.")
+                            # Generate new summary
+                            summary_id = create_summary_for_document(selected_doc_id)
+                            
+                            if summary_id:
+                                st.success(f"Summary regenerated successfully! Summary ID: {summary_id}")
                                 st.rerun()
-                            except Exception as e:
-                                st.error(f"Error adding summary: {str(e)}")
-                
-                # Display summary info if it exists
-                if existing_summary:
-                    st.subheader("Summary Information")
-                    st.info(f"""
-                    **Summary ID**: {existing_summary[0]}
-                    **Document ID**: {existing_summary[1]}
-                    **Generated At**: {existing_summary[3]}
-                    """)
+                else:
+                    st.info("This document doesn't have a summary yet.")
+                    
+                    if st.button("Generate Summary"):
+                        with st.spinner("Generating summary..."):
+                            summary_id = create_summary_for_document(selected_doc_id)
+                            
+                            if summary_id:
+                                st.success(f"Summary generated successfully! Summary ID: {summary_id}")
+                                
+                                # Get the summary from the database
+                                summary = db.get_summary(selected_doc_id)
+                                if summary:
+                                    st.markdown("## Generated Summary")
+                                    st.markdown(summary[2])
+                                else:
+                                    st.error("Summary was created but could not be retrieved.")
             else:
                 st.warning("No documents found. Please upload a document first.")
         except Exception as e:
@@ -420,7 +708,7 @@ with tab2:
                 if summaries and len(summaries) > 0:
                     for i, summary in enumerate(summaries):
                         with st.expander(f"Summary #{summary[0]} - Document: {os.path.basename(summary[2])}", expanded=False):
-                            st.text_area(f"Summary Text #{i+1}", summary[3], height=150, disabled=True)
+                            st.markdown(summary[3])
                             st.caption(f"Generated: {summary[4]}")
                 else:
                     st.info("No summaries found in the database.")
@@ -660,107 +948,6 @@ with tab4:
     except Exception as e:
         st.error(f"Error loading documents with summaries: {str(e)}")
         st.info("Make sure you have created documents and added summaries to them.")
-
-# ---- IMPORT DATA TAB ----
-with tab5:
-    st.header("Import JSON Data")
-    st.markdown("""
-    This section allows you to import data from JSON files. The system will automatically detect and store:
-    - **Summaries**: Any key containing "summary" will be stored as a document summary
-    - **Quizzes/Questions**: Keys containing "quiz", "question", "mcq", or "test" will be processed as quiz questions
-    - **Question Papers**: Keys containing "paper", "exam", "test", or "assessment" will be processed as question papers
-    
-    The importer is flexible and will try to adapt to your JSON structure.
-    """)
-    
-    # Select document to attach the imported data to
-    try:
-        documents = db.cursor.execute('''
-            SELECT document_id, original_file_url, source_type, uploaded_at
-            FROM documents
-            ORDER BY uploaded_at DESC
-        ''').fetchall()
-        
-        if documents and len(documents) > 0:
-            doc_options = {f"Document #{doc[0]}: {os.path.basename(doc[1])} ({doc[2]})": doc[0] for doc in documents}
-            
-            selected_doc = st.selectbox(
-                "Select Document", 
-                options=list(doc_options.keys()),
-                help="Select a document to attach the imported data to"
-            )
-            
-            selected_doc_id = doc_options[selected_doc]
-            
-            # JSON file upload
-            uploaded_json = st.file_uploader("Upload JSON File", type=["json"])
-            
-            if uploaded_json is not None:
-                if st.button("Import Data"):
-                    with st.spinner("Importing data from JSON..."):
-                        import_results = import_json_data(uploaded_json, selected_doc_id)
-                        
-                        if "errors" in import_results and import_results["errors"]:
-                            for error in import_results["errors"]:
-                                st.error(f"❌ {error}")
-                        
-                        if "actions" in import_results and import_results["actions"]:
-                            for action in import_results["actions"]:
-                                st.success(f"✅ {action}")
-            
-            # Example JSON structures
-            with st.expander("View Example JSON Structures"):
-                st.markdown("""
-                ### Standard Format
-                ```json
-                {
-                    "summary": "This is the document summary text.",
-                    "quiz": {
-                        "questions": [
-                            {
-                                "question_text": "What is the capital of France?",
-                                "correct_option": "Paris",
-                                "options": ["London", "Paris", "Berlin", "Madrid"]
-                            }
-                        ]
-                    }
-                }
-                ```
-                
-                ### Alternative Formats (all supported)
-                ```json
-                {
-                    "document_summary": "Summary goes here",
-                    "practice_questions": [
-                        {
-                            "question": "Who wrote Romeo and Juliet?",
-                            "correct": "William Shakespeare",
-                            "choices": ["Charles Dickens", "William Shakespeare", "Jane Austen"]
-                        }
-                    ]
-                }
-                ```
-                
-                ```json
-                {
-                    "summary": {
-                        "text": "This is a summary in a nested object."
-                    },
-                    "mcq_test": [
-                        {
-                            "stem": "What is 2+2?",
-                            "answer": "4",
-                            "options": ["3", "4", "5", "6"]
-                        }
-                    ]
-                }
-                ```
-                """)
-        else:
-            st.warning("No documents found. Please upload a document first.")
-    except Exception as e:
-        st.error(f"Error loading documents: {str(e)}")
-        st.info("Make sure you have uploaded documents first.")
 
 # Footer
 st.divider()
