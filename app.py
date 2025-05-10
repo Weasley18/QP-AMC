@@ -246,8 +246,24 @@ def ocr_pdf_with_gemini(pdf_file_path: str):
             types.Part.from_text(text="""You will be given a pdf of notes: Handwritten or Typed.
         Your task is to convert handwritten notes to clear text.
         If the pdf is in typed format, just parse the text.
-        The return should be a json file with the fields: subject, topics, text.
-        Structure the JSON output with proper readability for formulas and examples."""),
+        The return should be a json file with the following structure:
+        {
+            "subject": "The main subject of the document",
+            "topics": ["Topic 1", "Topic 2", "Topic 3"],
+            "text": "The full extracted text content",
+            "metadata": {
+                "document_type": "handwritten or typed",
+                "language": "detected language",
+                "pages": "number of pages"
+            },
+            "sections": [
+                {
+                    "title": "Section title if available",
+                    "content": "Content of this section"
+                }
+            ]
+        }
+        Ensure proper JSON formatting with indentation for readability."""),
         ],
     )
 
@@ -272,7 +288,24 @@ def ocr_pdf_with_gemini(pdf_file_path: str):
         # Try to parse the JSON response
         try:
             json_data = json.loads(full_response)
-            return json_data
+            
+            # Standardize the JSON structure
+            standardized_json = {
+                "subject": json_data.get("subject", "Unknown"),
+                "topics": json_data.get("topics", []),
+                "text": json_data.get("text", ""),
+                "metadata": json_data.get("metadata", {
+                    "document_type": "unknown",
+                    "language": "unknown",
+                    "pages": "unknown"
+                }),
+                "sections": json_data.get("sections", [])
+            }
+            
+            # Format the JSON with proper indentation for display
+            formatted_json = json.dumps(standardized_json, indent=2)
+            
+            return standardized_json
         except json.JSONDecodeError:
             st.error("Failed to parse JSON from the API response.")
             st.code(full_response[:1000] + ("..." if len(full_response) > 1000 else ""))
@@ -359,37 +392,59 @@ def create_summary_for_document(document_id):
             
             # Check if we have a topics list or dictionary
             if isinstance(summary_result, dict):
+                # Create a better structured JSON summary format
+                structured_summary = {
+                    "document_id": document_id,
+                    "summary": summary_result.get("summary", ""),
+                    "topics": []
+                }
+                
                 if "topics" in summary_result and isinstance(summary_result["topics"], list):
-                    # Format with topics as a list
-                    formatted_summary += "# Summary\n\n"
-                    if "summary" in summary_result:
-                        formatted_summary += f"{summary_result.get('summary', '')}\n\n"
-                    
-                    formatted_summary += "# Topics\n\n"
+                    # Handle topics as a list of objects with name and content
+                    topic_list = []
                     for topic in summary_result.get("topics", []):
                         if isinstance(topic, dict) and "name" in topic and "content" in topic:
+                            topic_list.append({
+                                "name": topic["name"],
+                                "content": topic["content"]
+                            })
                             formatted_summary += f"## {topic['name']}\n\n{topic['content']}\n\n"
                         else:
+                            topic_list.append({"name": str(topic), "content": ""})
                             formatted_summary += f"- {topic}\n"
+                    
+                    structured_summary["topics"] = topic_list
+                    formatted_summary = "# Summary\n\n" + summary_result.get("summary", "") + "\n\n# Topics\n\n" + formatted_summary
                 else:
-                    # Format for topic-content pairs as top-level keys
-                    formatted_summary += "# Summary\n\n"
+                    # Handle top-level keys as topics
+                    topic_list = []
+                    formatted_summary += "# Summary\n\n" + summary_result.get("summary", "") + "\n\n# Topics\n\n"
                     
-                    # Extract the main summary if it exists
-                    if "summary" in summary_result:
-                        formatted_summary += f"{summary_result.get('summary', '')}\n\n"
-                    
-                    # Process other keys as potential topics
-                    formatted_summary += "# Topics\n\n"
                     for key, value in summary_result.items():
                         if key != "summary" and key != "topics":
+                            topic_list.append({
+                                "name": key,
+                                "content": value
+                            })
                             formatted_summary += f"## {key}\n\n{value}\n\n"
+                    
+                    structured_summary["topics"] = topic_list
             else:
-                # If it's just text, use it directly
+                # If it's just a text string, create a simple structure
+                structured_summary = {
+                    "document_id": document_id,
+                    "summary": str(summary_result),
+                    "topics": []
+                }
                 formatted_summary = str(summary_result)
             
-            # Add summary to database
+            # Store the structured JSON in the database along with formatted text
             summary_id = db.add_summary(document_id, formatted_summary)
+            
+            # Optionally, you can also store the structured JSON separately
+            # This would require a database schema update
+            # db.add_structured_summary(document_id, json.dumps(structured_summary))
+            
             return summary_id
         else:
             st.error("Failed to generate summary")
@@ -601,41 +656,237 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
 def format_json_for_display(data):
     """Format JSON data for better display in Streamlit"""
     if isinstance(data, dict):
-        # If it's a dictionary, create a formatted display
-        formatted_output = ""
-        for key, value in data.items():
-            # Skip technical keys or empty values
-            if key.startswith("_") or value is None or value == "":
-                continue
-                
-            # Format the key as a header
-            formatted_output += f"### {key.replace('_', ' ').title()}\n"
+        # Add CSS styling for boundaries and larger text
+        styled_output = """
+        <style>
+        .topic-container {
+            border: 2px solid #4da6ff;
+            border-radius: 10px;
+            padding: 15px;
+            margin: 15px 0;
+            background-color: #1e3d59;
+        }
+        .topic-heading {
+            font-size: 22px;
+            font-weight: 600;
+            color: #8ab4f8;
+            margin-bottom: 10px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+            padding-bottom: 8px;
+        }
+        .topic-content {
+            font-size: 16px;
+            line-height: 1.6;
+            margin-top: 10px;
+        }
+        .summary-section {
+            font-size: 18px;
+            line-height: 1.6;
+            margin: 20px 0;
+            padding: 15px;
+            background-color: rgba(77, 166, 255, 0.1);
+            border-radius: 8px;
+        }
+        .metadata-item {
+            font-size: 16px;
+            margin: 5px 0;
+        }
+        .section-header {
+            font-size: 24px;
+            font-weight: 600;
+            color: #4da6ff;
+            margin: 25px 0 15px 0;
+            border-bottom: 2px solid #4da6ff;
+            padding-bottom: 8px;
+        }
+        </style>
+        """
+        
+        formatted_output = styled_output
+        
+        # Group keys by categories
+        metadata_keys = ["subject", "document_type", "language", "metadata", "pages"]
+        content_keys = ["text", "content", "full_text"]
+        topic_keys = ["topics", "sections", "key_points", "categories"]
+        summary_keys = ["summary"]
+        
+        # If this is a summary document, reorganize to put topics as headings
+        if "topics" in data and any(k in data for k in summary_keys):
+            # Start with a document title if subject exists
+            if "subject" in data:
+                formatted_output += f'<h1 style="color:#8ab4f8;font-size:28px;margin-bottom:20px;">{data["subject"]}</h1>'
             
-            # Format the value based on its type
-            if isinstance(value, list):
-                # If it's a list, display as bullet points
-                for item in value:
-                    if isinstance(item, dict):
-                        # If list item is a dict, format it nicely
-                        for sub_key, sub_value in item.items():
-                            formatted_output += f"- **{sub_key}**: {sub_value}\n"
+            # Add the main summary as an introduction section
+            if "summary" in data and data["summary"]:
+                formatted_output += '<div class="section-header">Overview</div>'
+                formatted_output += f'<div class="summary-section">{data["summary"]}</div>'
+            
+            # Display topics as main sections with their content
+            formatted_output += '<div class="section-header">Topics</div>'
+            
+            topics = data.get("topics", [])
+            if isinstance(topics, list):
+                for topic in topics:
+                    if isinstance(topic, dict):
+                        topic_name = topic.get("name", "Untitled Topic")
+                        topic_content = topic.get("content", "")
+                        
+                        formatted_output += f'''
+                        <div class="topic-container">
+                            <div class="topic-heading">{topic_name}</div>
+                            <div class="topic-content">{topic_content}</div>
+                        </div>
+                        '''
                     else:
-                        formatted_output += f"- {item}\n"
-            elif isinstance(value, dict):
-                # If it's a nested dict, format recursively
-                for sub_key, sub_value in value.items():
-                    formatted_output += f"**{sub_key}**: {sub_value}\n"
-            else:
-                # For simple values, just display them
-                formatted_output += f"{value}\n\n"
-                
+                        # Handle simple topic strings
+                        formatted_output += f'''
+                        <div class="topic-container">
+                            <div class="topic-heading">{topic}</div>
+                        </div>
+                        '''
+            
+            # Add metadata at the bottom
+            metadata_items = [k for k in data.keys() if k in metadata_keys]
+            if metadata_items:
+                formatted_output += '<div class="section-header">Document Information</div>'
+                formatted_output += '<div style="padding:10px;background-color:#1e3d59;border-radius:8px;">'
+                for key in metadata_items:
+                    value = data[key]
+                    if key == "metadata" and isinstance(value, dict):
+                        for mk, mv in value.items():
+                            formatted_output += f'<div class="metadata-item"><strong>{mk.replace("_", " ").title()}:</strong> {mv}</div>'
+                    else:
+                        formatted_output += f'<div class="metadata-item"><strong>{key.replace("_", " ").title()}:</strong> {value}</div>'
+                formatted_output += '</div>'
+            
+            return formatted_output
+        
+        # Standard formatting for other types of data
+        # Format metadata section
+        metadata_items = [k for k in data.keys() if k in metadata_keys]
+        if metadata_items:
+            formatted_output += '<div class="section-header">📝 Document Metadata</div>'
+            formatted_output += '<div style="padding:10px;background-color:#1e3d59;border-radius:8px;">'
+            for key in metadata_items:
+                value = data[key]
+                if key == "metadata" and isinstance(value, dict):
+                    formatted_output += "<details>\n<summary>Metadata Details</summary>\n\n"
+                    for mk, mv in value.items():
+                        formatted_output += f'<div class="metadata-item"><strong>{mk.replace("_", " ").title()}:</strong> {mv}</div>'
+                    formatted_output += "</details>\n"
+                else:
+                    formatted_output += f'<div class="metadata-item"><strong>{key.replace("_", " ").title()}:</strong> {value}</div>'
+            formatted_output += '</div>'
+        
+        # Format topics section
+        topic_items = [k for k in data.keys() if k in topic_keys]
+        if topic_items:
+            formatted_output += '<div class="section-header">📋 Topics & Categories</div>'
+            
+            for key in topic_items:
+                value = data[key]
+                if isinstance(value, list):
+                    if key == "sections" and all(isinstance(item, dict) for item in value):
+                        for i, section in enumerate(value):
+                            formatted_output += f'''
+                            <div class="topic-container">
+                                <div class="topic-heading">{section.get('title', f'Section {i+1}')}</div>
+                                <div class="topic-content">{section.get('content', '')}</div>
+                            </div>
+                            '''
+                    else:
+                        formatted_output += f'<div style="font-size:18px;margin-bottom:10px;"><strong>{key.replace("_", " ").title()}:</strong></div>'
+                        for i, item in enumerate(value):
+                            if isinstance(item, dict) and "name" in item:
+                                topic_name = item.get("name", "")
+                                topic_content = item.get("content", "")
+                                
+                                formatted_output += f'''
+                                <div class="topic-container">
+                                    <div class="topic-heading">{topic_name}</div>
+                                    <div class="topic-content">{topic_content}</div>
+                                </div>
+                                '''
+                            else:
+                                formatted_output += f'<div class="metadata-item">• {item}</div>'
+        
+        # Format content section (collapsed by default as it can be long)
+        content_items = [k for k in data.keys() if k in content_keys and k not in ["sections"]]
+        if content_items:
+            formatted_output += '<div class="section-header">📄 Content</div>'
+            for key in content_items:
+                value = data[key]
+                if isinstance(value, str) and len(value) > 200:
+                    preview = value[:200] + "..."
+                    formatted_output += f"<details>\n<summary style='font-size:18px;'>{key.replace('_', ' ').title()} (Preview)</summary>\n\n"
+                    formatted_output += f'<div class="topic-content">{value}</div>'
+                    formatted_output += "</details>\n"
+                else:
+                    formatted_output += f'<div style="font-size:18px;margin-bottom:10px;"><strong>{key.replace("_", " ").title()}:</strong></div>'
+                    formatted_output += f'<div class="topic-content">{value}</div>'
+        
+        # Add other keys that don't fit in categories
+        other_keys = [k for k in data.keys() if k not in metadata_keys + topic_keys + content_keys + summary_keys]
+        if other_keys:
+            formatted_output += '<div class="section-header">⚙️ Other Information</div>'
+            for key in other_keys:
+                value = data[key]
+                if isinstance(value, dict):
+                    formatted_output += f"<details>\n<summary style='font-size:18px;'>{key.replace('_', ' ').title()}</summary>\n\n"
+                    formatted_output += '<div style="padding:10px;background-color:#1e3d59;border-radius:8px;">'
+                    for k, v in value.items():
+                        formatted_output += f'<div class="metadata-item"><strong>{k}:</strong> {v}</div>'
+                    formatted_output += '</div>'
+                    formatted_output += "</details>\n"
+                elif isinstance(value, list):
+                    formatted_output += f'<div style="font-size:18px;margin-bottom:10px;"><strong>{key.replace("_", " ").title()}:</strong></div>'
+                    for item in value:
+                        formatted_output += f'<div class="metadata-item">• {item}</div>'
+                else:
+                    formatted_output += f'<div class="metadata-item"><strong>{key.replace("_", " ").title()}:</strong> {value}</div>'
+                    
         return formatted_output
     elif isinstance(data, list):
-        # If it's a list, convert to markdown bullet points
-        return "\n".join([f"- {item}" for item in data])
+        # Add styling for lists
+        styled_output = """
+        <style>
+        .list-item {
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 12px;
+            margin: 8px 0;
+            font-size: 16px;
+            background-color: #1e3d59;
+            border-radius: 6px;
+        }
+        .list-header {
+            font-size: 20px;
+            font-weight: 600;
+            margin: 15px 0 10px 0;
+            color: #8ab4f8;
+        }
+        </style>
+        """
+        
+        formatted_output = styled_output
+        
+        # Check if it's a list of dictionaries
+        if all(isinstance(item, dict) for item in data):
+            # Group by common keys
+            for i, item in enumerate(data):
+                formatted_output += f'<div class="list-header">Item {i+1}</div>'
+                formatted_output += '<div style="padding:12px;background-color:#1e3d59;border-radius:8px;margin-bottom:15px;">'
+                for key, value in item.items():
+                    formatted_output += f'<div class="metadata-item"><strong>{key.replace("_", " ").title()}:</strong> {value}</div>'
+                formatted_output += '</div>'
+        else:
+            # Simple list
+            for i, item in enumerate(data):
+                formatted_output += f'<div class="list-item">• {item}</div>'
+                
+        return formatted_output
     else:
-        # For simple types, just convert to string
-        return str(data)
+        # For simple types, just convert to string with larger font
+        return f'<div style="font-size:16px;">{str(data)}</div>'
 
 # ---- USER MANAGEMENT TAB ----
 with tab1:
@@ -828,8 +1079,60 @@ with tab2:
                                                     # Get the summary from the database
                                                     summary = db.get_summary(document_id)
                                                     if summary:
+                                                        st.markdown("""
+                                                        <style>
+                                                        .scrollable-summary-box {
+                                                            height: 300px;
+                                                            overflow-y: auto;
+                                                            border: 1px solid #cccccc;
+                                                            border-radius: 6px;
+                                                            padding: 16px;
+                                                            margin: 15px 0;
+                                                            background-color: white;
+                                                            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+                                                        }
+                                                        /* Scrollbar styling */
+                                                        .scrollable-summary-box::-webkit-scrollbar {
+                                                            width: 8px;
+                                                        }
+                                                        .scrollable-summary-box::-webkit-scrollbar-track {
+                                                            background: #f1f1f1;
+                                                            border-radius: 4px;
+                                                        }
+                                                        .scrollable-summary-box::-webkit-scrollbar-thumb {
+                                                            background: #888;
+                                                            border-radius: 4px;
+                                                        }
+                                                        .scrollable-summary-box::-webkit-scrollbar-thumb:hover {
+                                                            background: #555;
+                                                        }
+                                                        .summary-content {
+                                                            font-size: 16px;
+                                                            line-height: 1.6;
+                                                            color: #333333;
+                                                        }
+                                                        .summary-header {
+                                                            font-size: 18px;
+                                                            font-weight: 600;
+                                                            color: #2c5282;
+                                                            margin-bottom: 10px;
+                                                            padding-bottom: 8px;
+                                                            border-bottom: 1px solid #e2e8f0;
+                                                        }
+                                                        </style>
+                                                        """, unsafe_allow_html=True)
+                                                        
                                                         st.markdown("## Summary")
-                                                        st.markdown(summary[2])
+                                                        
+                                                        # Display the summary with proper markdown in a scrollable box
+                                                        st.markdown(f"""
+                                                        <div class="summary-header">Generated: {summary[4]}</div>
+                                                        <div class="scrollable-summary-box">
+                                                            <div class="summary-content">
+                                                                {summary[3]}
+                                                            </div>
+                                                        </div>
+                                                        """, unsafe_allow_html=True)
                                                     else:
                                                         st.error("Summary was created but could not be retrieved.")
                             else:
@@ -918,13 +1221,66 @@ with tab2:
                     
                     # Display summary with better formatting
                     st.markdown("""
+                    <style>
+                    .summary-card {
+                        background-color: #046582;
+                        border-radius: 10px;
+                        padding: 20px;
+                        margin-top: 20px;
+                    }
+                    .scrollable-summary-box {
+                        height: 300px;
+                        overflow-y: auto;
+                        border: 1px solid #cccccc;
+                        border-radius: 6px;
+                        padding: 16px;
+                        margin: 15px 0;
+                        background-color: white;
+                        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+                    }
+                    /* Scrollbar styling */
+                    .scrollable-summary-box::-webkit-scrollbar {
+                        width: 8px;
+                    }
+                    .scrollable-summary-box::-webkit-scrollbar-track {
+                        background: #f1f1f1;
+                        border-radius: 4px;
+                    }
+                    .scrollable-summary-box::-webkit-scrollbar-thumb {
+                        background: #888;
+                        border-radius: 4px;
+                    }
+                    .scrollable-summary-box::-webkit-scrollbar-thumb:hover {
+                        background: #555;
+                    }
+                    .summary-content {
+                        font-size: 16px;
+                        line-height: 1.6;
+                        color: #333333;
+                    }
+                    .summary-header {
+                        font-size: 18px;
+                        font-weight: 600;
+                        color: #2c5282;
+                        margin-bottom: 10px;
+                        padding-bottom: 8px;
+                        border-bottom: 1px solid #e2e8f0;
+                    }
+                    </style>
+                    
                     <div class="summary-card">
                         <h3>Document Summary</h3>
                     </div>
                     """, unsafe_allow_html=True)
                     
-                    # Display the summary with proper markdown
-                    st.markdown(existing_summary[2])
+                    # Display the summary with proper markdown in a scrollable box
+                    st.markdown(f"""
+                    <div class="scrollable-summary-box">
+                        <div class="summary-content">
+                            {existing_summary[2]}
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
                     
                     # Add a view raw JSON option for OCR data
                     try:
@@ -966,11 +1322,59 @@ with tab2:
                                 summary = db.get_summary(selected_doc_id)
                                 if summary:
                                     st.markdown("""
-                                    <div class="summary-card">
-                                        <h3>Generated Summary</h3>
+                                    <style>
+                                    .scrollable-summary-box {
+                                        height: 300px;
+                                        overflow-y: auto;
+                                        border: 1px solid #cccccc;
+                                        border-radius: 6px;
+                                        padding: 16px;
+                                        margin: 15px 0;
+                                        background-color: white;
+                                        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+                                    }
+                                    /* Scrollbar styling */
+                                    .scrollable-summary-box::-webkit-scrollbar {
+                                        width: 8px;
+                                    }
+                                    .scrollable-summary-box::-webkit-scrollbar-track {
+                                        background: #f1f1f1;
+                                        border-radius: 4px;
+                                    }
+                                    .scrollable-summary-box::-webkit-scrollbar-thumb {
+                                        background: #888;
+                                        border-radius: 4px;
+                                    }
+                                    .scrollable-summary-box::-webkit-scrollbar-thumb:hover {
+                                        background: #555;
+                                    }
+                                    .summary-content {
+                                        font-size: 16px;
+                                        line-height: 1.6;
+                                        color: #333333;
+                                    }
+                                    .summary-header {
+                                        font-size: 18px;
+                                        font-weight: 600;
+                                        color: #2c5282;
+                                        margin-bottom: 10px;
+                                        padding-bottom: 8px;
+                                        border-bottom: 1px solid #e2e8f0;
+                                    }
+                                    </style>
+                                    """, unsafe_allow_html=True)
+                                    
+                                    st.markdown("## Summary")
+                                    
+                                    # Display the summary with proper markdown in a scrollable box
+                                    st.markdown(f"""
+                                    <div class="summary-header">Generated: {summary[4]}</div>
+                                    <div class="scrollable-summary-box">
+                                        <div class="summary-content">
+                                            {summary[3]}
+                                        </div>
                                     </div>
                                     """, unsafe_allow_html=True)
-                                    st.markdown(summary[2])
                                 else:
                                     st.error("Summary was created but could not be retrieved.")
             else:
@@ -981,19 +1385,66 @@ with tab2:
         
         # View all summaries
         st.subheader("All Document Summaries")
+        
+        # Add the scrollable summary box style once at the section level
+        st.markdown("""
+        <style>
+        .scrollable-summary-box {
+            height: 300px;
+            overflow-y: auto;
+            border: 1px solid #cccccc;
+            border-radius: 6px;
+            padding: 16px;
+            margin: 15px 0;
+            background-color: white;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+        /* Scrollbar styling */
+        .scrollable-summary-box::-webkit-scrollbar {
+            width: 8px;
+        }
+        .scrollable-summary-box::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 4px;
+        }
+        .scrollable-summary-box::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 4px;
+        }
+        .scrollable-summary-box::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+        .summary-content {
+            font-size: 16px;
+            line-height: 1.6;
+            color: #333333;
+        }
+        .summary-header {
+            font-size: 18px;
+            font-weight: 600;
+            color: #2c5282;
+            margin-bottom: 10px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+        
         if st.button("Show All Summaries"):
             try:
                 summaries = db.get_all_summaries()
                 if summaries and len(summaries) > 0:
                     for i, summary in enumerate(summaries):
                         with st.expander(f"Summary #{summary[0]} - Document: {os.path.basename(summary[2])}", expanded=False):
-                            # Add a styled container for each summary
-                            st.markdown("""
-                            <div style="background-color: #046582; padding: 10px; border-radius: 10px;">
+                            # Use the scrollable box for summary content
+                            st.markdown(f"""
+                            <div class="summary-header">Generated: {summary[4]}</div>
+                            <div class="scrollable-summary-box">
+                                <div class="summary-content">
+                                    {summary[3]}
+                                </div>
                             </div>
                             """, unsafe_allow_html=True)
-                            st.markdown(summary[3])
-                            st.caption(f"Generated: {summary[4]}")
                 else:
                     st.info("No summaries found in the database.")
             except Exception as e:
