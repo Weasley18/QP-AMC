@@ -157,37 +157,200 @@ def initialize_chat_model():
     return model
 
 def create_chatbot_ui():
-    """Create a Streamlit UI for the LearnLM chatbot"""
-    st.title("Learning Assistant Chatbot")
+    """Create a Streamlit UI for the LearnLM chatbot styled like Gemini"""
     
-    # Custom styles for chat bubbles
+    # Custom styles for Gemini-like UI
     st.markdown("""
     <style>
+    /* Main chatbot container */
+    .main-container {
+        max-width: 900px;
+        margin: 0 auto;
+    }
+    
+    /* Header styling */
+    .gemini-header {
+        display: flex;
+        align-items: center;
+        margin-bottom: 20px;
+        padding-bottom: 10px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    
+    .gemini-title {
+        font-size: 24px;
+        font-weight: 600;
+        color: #8ab4f8;
+        margin: 0;
+        padding: 0;
+    }
+    
+    /* Chat messages styling */
+    .chat-container {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        margin-bottom: 20px;
+        padding-bottom: 100px; /* Space for input */
+    }
+    
+    /* User message bubbles */
     .user-message {
-        background-color: #004578;
-        color: white;
-        padding: 10px;
-        border-radius: 15px 15px 0px 15px;
-        margin: 10px 0;
+        display: flex;
+        justify-content: flex-end;
     }
+    
+    .user-bubble {
+        background-color: #8ab4f8;
+        color: #202124;
+        padding: 12px 16px;
+        border-radius: 18px 18px 0 18px;
+        max-width: 80%;
+        font-size: 15px;
+        line-height: 1.5;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+    }
+    
+    /* Bot message bubbles */
     .bot-message {
-        background-color: #2b5797;
-        color: white;
-        padding: 10px;
-        border-radius: 15px 15px 15px 0px;
-        margin: 10px 0;
+        display: flex;
+        justify-content: flex-start;
     }
-    .youtube-container {
-        background-color: #333333;
-        border-radius: 10px;
-        padding: 10px;
-        margin-top: 20px;
+    
+    .bot-bubble {
+        background-color: #303136;
+        color: #e8eaed;
+        padding: 12px 16px;
+        border-radius: 18px 18px 18px 0;
+        max-width: 80%;
+        font-size: 15px;
+        line-height: 1.5;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.1);
     }
-    .youtube-title {
-        color: #ff5555;
+    
+    /* Message metadata */
+    .message-avatar {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        margin-right: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
         font-weight: bold;
     }
+    
+    .user-avatar {
+        background-color: #8ab4f8;
+        color: #202124;
+    }
+    
+    .bot-avatar {
+        background-color: #ea4335;
+        color: white;
+    }
+    
+    /* Input area styling */
+    .input-area {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background-color: #202124;
+        padding: 16px;
+        border-top: 1px solid rgba(255, 255, 255, 0.1);
+        z-index: 100;
+    }
+    
+    .input-container {
+        display: flex;
+        align-items: center;
+        background-color: #303136;
+        border-radius: 24px;
+        padding: 8px 16px;
+        max-width: 900px;
+        margin: 0 auto;
+    }
+    
+    .stTextInput > div > div > input {
+        background-color: transparent !important;
+        color: white !important;
+        border: none !important;
+        padding: 10px !important;
+        font-size: 16px !important;
+    }
+    
+    .send-button {
+        background-color: transparent;
+        border: none;
+        color: #8ab4f8;
+        cursor: pointer;
+        padding: 8px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    /* YouTube resources styling */
+    .youtube-container {
+        background-color: #303136;
+        border-radius: 12px;
+        padding: 12px 16px;
+        margin-top: 16px;
+        border-left: 3px solid #ea4335;
+    }
+    
+    .youtube-title {
+        color: #8ab4f8;
+        font-weight: 600;
+        margin-bottom: 8px;
+    }
+    
+    .youtube-link {
+        color: #8ab4f8;
+        text-decoration: none;
+        word-break: break-all;
+    }
+    
+    .youtube-link:hover {
+        text-decoration: underline;
+    }
+    
+    /* Buttons */
+    .stButton > button {
+        background-color: #8ab4f8 !important;
+        color: #202124 !important;
+        border-radius: 24px !important;
+        padding: 4px 16px !important;
+        font-weight: 500 !important;
+        border: none !important;
+        transition: all 0.2s ease !important;
+    }
+    
+    .stButton > button:hover {
+        background-color: #aecbfa !important;
+    }
+    
+    /* Hide default Streamlit form elements */
+    div.row-widget.stButton {
+        text-align: right;
+    }
+    
+    /* Mobile responsive */
+    @media (max-width: 640px) {
+        .user-bubble, .bot-bubble {
+            max-width: 90%;
+        }
+    }
     </style>
+    """, unsafe_allow_html=True)
+    
+    # Header with Gemini-like styling
+    st.markdown("""
+    <div class="gemini-header">
+        <h1 class="gemini-title">Edumate Learning Assistant</h1>
+    </div>
     """, unsafe_allow_html=True)
 
     # Initialize session state for chat
@@ -227,20 +390,29 @@ Before starting ask the user their preferred language. (English, Kannada, Hingli
     if not st.session_state.language_selected:
         st.info("The chatbot will ask you to select a language. Choose from English, Hindi, Kannada, or Hinglish.")
 
-    # Create a container for chat messages
-    chat_container = st.container()
+    # Create a container for chat messages with Gemini-like styling
+    st.markdown('<div class="chat-container">', unsafe_allow_html=True)
     
-    # Display chat messages in the container
-    with chat_container:
-        for message in st.session_state.messages:
-            if message["role"] == "user":
-                st.markdown(f'<div class="user-message">You: {message["content"]}</div>', unsafe_allow_html=True)
-            else:
-                st.markdown(f'<div class="bot-message">Assistant: {message["content"]}</div>', unsafe_allow_html=True)
+    # Display chat messages with Gemini-like styling
+    for message in st.session_state.messages:
+        if message["role"] == "user":
+            st.markdown(f'''
+            <div class="user-message">
+                <div class="user-bubble">{message["content"]}</div>
+            </div>
+            ''', unsafe_allow_html=True)
+        else:
+            st.markdown(f'''
+            <div class="bot-message">
+                <div class="bot-bubble">{message["content"]}</div>
+            </div>
+            ''', unsafe_allow_html=True)
+    
+    st.markdown('</div>', unsafe_allow_html=True)
 
-    # Create a form for user input to prevent auto-reloading
+    # Create a form for user input with Gemini-like styling
     with st.form(key="chat_form", clear_on_submit=True):
-        user_input = st.text_input("Type your message here:", key="user_input")
+        user_input = st.text_input("", placeholder="Message the Learning Assistant...", key="user_input", label_visibility="collapsed")
         submit_button = st.form_submit_button("Send")
     
     # Handle user input when form is submitted
@@ -310,38 +482,37 @@ Before starting ask the user their preferred language. (English, Kannada, Hingli
                 st.markdown(f"""
                 <div class="youtube-container">
                     <p class="youtube-title">{i}. {video['title']}</p>
-                    <a href="{video['url']}" target="_blank">{video['url']}</a>
+                    <a class="youtube-link" href="{video['url']}" target="_blank">{video['url']}</a>
                 </div>
                 """, unsafe_allow_html=True)
         else:
             st.warning("No relevant videos found.")
         
         # Add a reset chat button
-        if st.button("Start New Chat"):
-            # Reset the chat session
-            for key in ['messages', 'chat', 'show_exit_resources', 'exit_topic']:
-                if key in st.session_state:
-                    del st.session_state[key]
-            st.rerun()
+        st.button("Start New Chat")
+        
     # Display YouTube recommendations button if there's at least one user message and not in exit mode
     elif len([msg for msg in st.session_state.messages if msg["role"] == "user"]) >= 1 and not st.session_state.get('show_exit_resources', False):
-        if st.button("Get Learning Resources"):
-            # Extract the main topic from all user messages
-            all_user_text = " ".join([msg["content"] for msg in st.session_state.messages if msg["role"] == "user"])
-            topic = get_main_topic(all_user_text)
-            
-            if topic:
-                # Store topic for display
-                st.session_state.resource_topic = topic
-                st.session_state.show_resources = True
-                st.rerun()
-            else:
-                st.info("Could not identify a specific topic from your conversation. Try discussing a specific subject.")
+        # Centered button
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            if st.button("Get Learning Resources"):
+                # Extract the main topic from all user messages
+                all_user_text = " ".join([msg["content"] for msg in st.session_state.messages if msg["role"] == "user"])
+                topic = get_main_topic(all_user_text)
+                
+                if topic:
+                    # Store topic for display
+                    st.session_state.resource_topic = topic
+                    st.session_state.show_resources = True
+                    st.rerun()
+                else:
+                    st.info("Could not identify a specific topic from your conversation. Try discussing a specific subject.")
     
     # Check if we should display resources (from button click)
     if "show_resources" in st.session_state and st.session_state.show_resources and "resource_topic" in st.session_state:
         topic = st.session_state.resource_topic
-        st.markdown(f'<h3>YouTube videos about "{topic}" in {st.session_state.preferred_language}:</h3>', unsafe_allow_html=True)
+        st.markdown(f'<h3>Learning resources about "{topic}" in {st.session_state.preferred_language}:</h3>', unsafe_allow_html=True)
         
         with st.spinner("Searching YouTube..."):
             videos = search_youtube_videos(topic, st.session_state.preferred_language)
@@ -351,17 +522,19 @@ Before starting ask the user their preferred language. (English, Kannada, Hingli
                 st.markdown(f"""
                 <div class="youtube-container">
                     <p class="youtube-title">{i}. {video['title']}</p>
-                    <a href="{video['url']}" target="_blank">{video['url']}</a>
+                    <a class="youtube-link" href="{video['url']}" target="_blank">{video['url']}</a>
                 </div>
                 """, unsafe_allow_html=True)
         else:
             st.warning("No relevant videos found. Try a different topic.")
             
         # Add a close button for resources
-        if st.button("Close Resources"):
-            del st.session_state['show_resources']
-            del st.session_state['resource_topic']
-            st.rerun()
+        col1, col2, col3 = st.columns([3, 2, 3])
+        with col2:
+            if st.button("Close Resources"):
+                del st.session_state['show_resources']
+                del st.session_state['resource_topic']
+                st.rerun()
 
 if __name__ == "__main__":
     create_chatbot_ui() 
