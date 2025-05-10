@@ -1,5 +1,6 @@
 import sqlite3
 from datetime import datetime
+import json
 
 class Database:
     def __init__(self, db_name):
@@ -183,6 +184,11 @@ class Database:
         self.cursor.execute('SELECT * FROM users WHERE user_id = ?', (user_id,))
         return self.cursor.fetchone()
 
+    def get_all_users(self):
+        """Get all users from the database."""
+        self.cursor.execute('SELECT * FROM users ORDER BY user_id')
+        return self.cursor.fetchall()
+
     # Document operations
     def add_document(self, user_id, original_file_url, source_type, text_content=None):
         """Add a new document."""
@@ -251,10 +257,11 @@ class Database:
     # Question paper operations
     def create_question_paper(self, document_id, settings=None):
         """Create a new question paper."""
+        settings_json = json.dumps(settings) if settings else None
         self.cursor.execute('''
             INSERT INTO question_papers (document_id, settings)
             VALUES (?, ?)
-        ''', (document_id, settings))
+        ''', (document_id, settings_json))
         self.conn.commit()
         return self.cursor.lastrowid
 
@@ -275,6 +282,86 @@ class Database:
         
         self.conn.commit()
         return question_id
+
+    def get_question_paper(self, paper_id):
+        """Get question paper details."""
+        self.cursor.execute('''
+            SELECT qp.*, d.original_file_url, s.summary_text
+            FROM question_papers qp
+            JOIN documents d ON qp.document_id = d.document_id
+            LEFT JOIN summaries s ON d.document_id = s.document_id
+            WHERE qp.paper_id = ?
+        ''', (paper_id,))
+        return self.cursor.fetchone()
+
+    def get_paper_questions(self, paper_id):
+        """Get all questions for a paper."""
+        self.cursor.execute('''
+            SELECT pq.*
+            FROM paper_questions pq
+            WHERE pq.paper_id = ?
+            ORDER BY pq.paper_question_id
+        ''', (paper_id,))
+        return self.cursor.fetchall()
+
+    def get_paper_question_options(self, paper_question_id):
+        """Get options for a paper question."""
+        self.cursor.execute('''
+            SELECT *
+            FROM paper_options
+            WHERE paper_question_id = ?
+            ORDER BY paper_option_id
+        ''', (paper_question_id,))
+        return self.cursor.fetchall()
+
+    def get_all_question_papers(self):
+        """Get all question papers."""
+        self.cursor.execute('''
+            SELECT qp.paper_id, d.original_file_url, qp.created_at,
+                   (SELECT COUNT(*) FROM paper_questions WHERE paper_id = qp.paper_id) as question_count
+            FROM question_papers qp
+            JOIN documents d ON qp.document_id = d.document_id
+            ORDER BY qp.created_at DESC
+        ''')
+        return self.cursor.fetchall()
+
+    # Summary operations
+    def add_summary(self, document_id, summary_text):
+        """Add a summary for a document."""
+        self.cursor.execute('''
+            INSERT INTO summaries (document_id, summary_text)
+            VALUES (?, ?)
+        ''', (document_id, summary_text))
+        self.conn.commit()
+        return self.cursor.lastrowid
+    
+    def get_summary(self, document_id):
+        """Get summary for a document."""
+        self.cursor.execute('''
+            SELECT * FROM summaries WHERE document_id = ?
+        ''', (document_id,))
+        return self.cursor.fetchone()
+    
+    def get_all_summaries(self):
+        """Get all summaries."""
+        self.cursor.execute('''
+            SELECT s.summary_id, d.document_id, d.original_file_url, s.summary_text, s.generated_at
+            FROM summaries s
+            JOIN documents d ON s.document_id = d.document_id
+            ORDER BY s.generated_at DESC
+        ''')
+        return self.cursor.fetchall()
+    
+    def get_documents_with_summaries(self):
+        """Get all documents that have summaries."""
+        self.cursor.execute('''
+            SELECT d.document_id, d.original_file_url, u.name, d.source_type, d.uploaded_at
+            FROM documents d
+            JOIN users u ON d.user_id = u.user_id
+            WHERE d.document_id IN (SELECT document_id FROM summaries)
+            ORDER BY d.uploaded_at DESC
+        ''')
+        return self.cursor.fetchall()
 
     # Revision queue operations
     def add_to_revision_queue(self, user_id, question_id):
