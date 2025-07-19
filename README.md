@@ -36,7 +36,7 @@ The platform allows users to upload documents, generate summaries, create quizze
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/edumate.git
+git clone https://github.com/Weasley18/QP-AMC
 cd edumate
 ```
 
